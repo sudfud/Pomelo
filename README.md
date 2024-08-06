@@ -19,7 +19,13 @@ Pomelo is a desktop media player with Youtube search, playback, and download fun
 - Downloads may be in different formats (mp4 or webm) or qualities. This presumably depends on if ffmpeg is installed. Format/Quality options will be added as development progresses.
 
 ## Installation
-To install, simply extract from the .zip file.
+
+### Gstreamer
+To run Pomelo, you'll need to have gstreamer installed on your computer. Check [the official website](https://gstreamer.freedesktop.org/download) for instructions on how to install.
+
+If you're installing gstreamer on Windows, you will also need to add the path to the gstreamer binaries ( example: C:\gstreamer\1.0\msvc_x86_64\bin ) to the [PATH environment variable.](https://www.computerhope.com/issues/ch000549.htm)
+
+After installing gstreamer, you should be able to simply extract and run Pomelo.
 
 It is recommended to keep Pomelo in its own separate folder, as it will create files and folders in the same location as the program.
 
@@ -28,7 +34,7 @@ Pomelo should work on most modern Windows and Linux systems, though testing on t
 If you have Pomelo working on a system not listed here, please let me know so it can be added to the list.
 
 ### Windows
-- Windows 11
+- Windows 11, 10
 
 ### Linux
 - Ubuntu
