@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use iced::Task;
+use iced::widget::Text;
 
 use crate::INVID_INSTANCES;
 use crate::app::PomeloInstance;
@@ -39,41 +40,22 @@ impl PomeloPage for SettingsPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::widget::{column, row, Text, PickList, Button, Checkbox, Tooltip, Container};
-        use iced::widget::tooltip::Position;
-        use iced::widget::container;
-        use iced::font::{Font, Weight};
+        use iced::widget::{column, row, PickList, Button, Checkbox};
         use super::FillElement;
 
         column![
 
             // Invidious options
             column![
-                Text::new("Invidious").font(Font {
-                    weight: Weight::Bold,
-                    ..Default::default()
-                }).size(24),
+                header("Invidious"),
+
                 row![
-                    Tooltip::new(
-                        Text::new("Instance"),
-                        Container::new(
-                            Text::new(
-                                "3rd-party Youtube API used for searching.\n\
-                                Try changing this if searching doesn't work."
-                            )
-                        ).style(
-                            |e: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(e.palette().primary)),
-                                border: iced::Border {
-                                    color: iced::Color::BLACK,
-                                    width: 2.5,
-                                    radius: iced::border::Radius::new(10)
-                                },
-                                ..Default::default()
-                            }
-                        ).padding(10),
-                        Position::default()
+                    tooltip_with_background(
+                        "Instance",
+                        "3rd-party Youtube API used for searching.\n\
+                        Try changing this if searching doesn't work."
                     ),
+
                     PickList::new(
                         (0..INVID_INSTANCES.len())
                             .map(InstanceIndex::new)
@@ -86,30 +68,13 @@ impl PomeloPage for SettingsPage {
 
             // Yt-dlp options
             column![
-                Text::new("Yt-dlp").font(Font {
-                    weight: Weight::Bold,
-                    ..Default::default()
-                }).size(24),
+                header("Yt-dlp"),
+
                 row![
-                    Tooltip::new(
-                        Text::new("Use nightly build"),
-                        Container::new(
-                            Text::new(
-                                "Use the latest nightly release of yt-dlp, instead of the stable one.\n\
-                                Try changing this if downloads don't work or stop working."
-                            )
-                        ).style(
-                            |e: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(e.palette().primary)),
-                                border: iced::Border {
-                                    color: iced::Color::BLACK,
-                                    width: 2.5,
-                                    radius: iced::border::Radius::new(10)
-                                },
-                                ..Default::default()
-                            }
-                        ).padding(10),
-                        Position::default()
+                    tooltip_with_background(
+                        "Use nightly build",
+                        "Use the latest nightly release of yt-dlp, instead of the stable one.\n\
+                        Try changing this if downloads don't work or stop working."
                     ),
 
                     Checkbox::new("", instance.settings().use_nightly())
@@ -124,4 +89,37 @@ impl PomeloPage for SettingsPage {
     fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
         iced::Subscription::none()
     }
+}
+
+fn header(text: &str) -> iced::Element<Msg> {
+    use iced::font::{Font, Weight};
+
+    Text::new(text).font(
+        Font {
+            weight: Weight::Bold,
+            ..Default::default()
+        }
+    ).size(24).into()
+}
+
+fn tooltip_with_background <'a> (text: &'a str, tip: &'a str) -> iced::Element<'a, Msg> {
+    use iced::widget::{Container, Tooltip};
+    use iced::widget::container;
+    use iced::widget::tooltip::Position;
+
+    Tooltip::new(
+        Text::new(text),
+        Container::new(Text::new(tip)).style(
+            |e: &iced::Theme| container::Style {
+                background: Some(iced::Background::Color(e.palette().primary)),
+                border: iced::Border {
+                    color: iced::Color::BLACK,
+                    width: 2.5,
+                    radius: iced::border::Radius::new(10)
+                },
+                ..Default::default()
+            }
+        ).padding(10),
+        Position::default()
+    ).into()
 }

@@ -7,7 +7,8 @@ use super::PomeloError;
 pub (crate) struct PomeloSettings {
     window_size: (f32, f32),
     invidious_index: usize,
-    yt_dlp_use_nightly: bool
+    yt_dlp_use_nightly: bool,
+    video_skip_on_error: bool,
 }
 
 impl PomeloSettings {
@@ -16,7 +17,8 @@ impl PomeloSettings {
         Self {
             window_size: (500.0, 500.0),
             invidious_index: 0,
-            yt_dlp_use_nightly: false
+            yt_dlp_use_nightly: false,
+            video_skip_on_error: false
         }   
     }
 
@@ -42,6 +44,14 @@ impl PomeloSettings {
 
     pub (crate) fn set_use_nightly(&mut self, nightly: bool) {
         self.yt_dlp_use_nightly = nightly;
+    }
+
+    pub (crate) fn video_skip_on_error(&self) -> bool {
+        self.video_skip_on_error
+    }
+
+    pub (crate) fn set_video_skip_on_error(&mut self, skip: bool) {
+        self.video_skip_on_error = skip;
     }
 
     // Load settings from the settings.json file, if it exists.

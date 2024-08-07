@@ -52,6 +52,7 @@ pub (crate) enum PomeloMessage {
     WindowResize((window::Id, Size)),
     InvidiousSetInstance(usize),
     YtUseNightly(bool),
+    VideoSkipOnError(bool),
 
     ThumbnailLoaded(Result<Thumbnail, PomeloError>),
 
