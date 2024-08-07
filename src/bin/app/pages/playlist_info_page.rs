@@ -215,8 +215,10 @@ impl PlaylistInfoPage {
             .map(|v| (v, false))
             .collect();
 
+        let index = if let VideoOrder::Sequential(i) = order {i} else {0};
+
         (
-            Task::done(VideoPlayerMessage::LoadVideo.into()),
+            Task::done(VideoPlayerMessage::LoadVideo(index).into()),
             Navigation::GoTo(Box::new(VideoPlayerPage::new(videos, order)))
         )
     }

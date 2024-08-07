@@ -8,7 +8,7 @@ use url::Url;
 
 use log::{info, error};
 
-use iced::Task;
+use iced::{widget::shader::wgpu::naga::proc::index, Task};
 
 use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
@@ -18,8 +18,8 @@ use super::{FillElement, PomeloInstance, Navigation, Msg};
 
 #[derive(Debug, Clone)]
 pub (crate) enum VideoPlayerMessage {
-    LoadVideo,
-    LoadComplete(Result<(Url, bool), PomeloError>),
+    LoadVideo(usize),
+    LoadComplete(usize, Result<(Url, bool), PomeloError>),
     NextVideo(usize),
     PlayToggle,
     VolumeUpdate(f64),
@@ -44,7 +44,7 @@ pub (crate) struct VideoPlayerPage {
     video_paused: bool,
     video_position: f64,
     video_volume: f64,
-    seeking: bool,
+    seeking: bool
 }
 
 impl super::PomeloPage for VideoPlayerPage {
@@ -57,34 +57,28 @@ impl super::PomeloPage for VideoPlayerPage {
 
         else if let Msg::VideoPlayer(msg) = message {
             match msg {
+                VideoPlayerMessage::LoadVideo(index) => return (
+                    self.load_video(index, instance),
+                    Navigation::None
+                ),
 
-                VideoPlayerMessage::LoadVideo
-                    => return self.load_video(instance.settings().invidious_index()),
-
-                VideoPlayerMessage::LoadComplete(result) 
-                    => self.on_load_complete(result),
+                VideoPlayerMessage::LoadComplete(index, result) => return (
+                    self.on_load_complete(index, result, instance.settings().video_skip_on_error()),
+                    Navigation::None
+                ),
 
                 // Video control messages
-                VideoPlayerMessage::NextVideo(index)
-                    => return self.next_video(index),
+                VideoPlayerMessage::NextVideo(index) => return (
+                    self.next_video(index),
+                    Navigation::None
+                ),
 
-                VideoPlayerMessage::PlayToggle 
-                    => self.toggle_playback(),
-
-                VideoPlayerMessage::VolumeUpdate(f) 
-                    => self.set_volume(f),
-
-                VideoPlayerMessage::Seek(f) 
-                    => self.seek(f),
-
-                VideoPlayerMessage::SeekRelease 
-                    => self.on_seek_release(),
-
-                // Keep track of the video position while it's playing
-                VideoPlayerMessage::NextFrame 
-                    => self.on_next_frame()
+                VideoPlayerMessage::PlayToggle => self.toggle_playback(),
+                VideoPlayerMessage::VolumeUpdate(f) => self.set_volume(f),
+                VideoPlayerMessage::Seek(f) => self.seek(f),
+                VideoPlayerMessage::SeekRelease => self.on_seek_release(),
+                VideoPlayerMessage::NextFrame => self.on_next_frame()
             }
-
         }
 
         (Task::none(), Navigation::None)
@@ -205,81 +199,94 @@ impl super::PomeloPage for VideoPlayerPage {
 impl VideoPlayerPage {
 
     // Start loading the current video for playback.
-    fn load_video(&self, instance_index: usize) -> (Task<Msg>, Navigation) {
+    fn load_video(&self, video_index: usize, instance: &PomeloInstance) -> Task<Msg> {
         use crate::yt_fetch::VideoFetcher;
 
-        let (video, from_computer) = self.videos[self.video_index.0].clone();
+        let (video, from_computer) = self.videos[video_index].clone();
 
         info!("Loading video for playback: {}", video);
 
-        if from_computer {
-            (
-                Task::done(
-                    VideoPlayerMessage::LoadComplete(Ok((Url::parse(&video).unwrap(), false))).into()
-                ),
-                Navigation::None
-            )
-        }
-        else {
-            let instance = String::from(INVID_INSTANCES[instance_index].0);
-            (
-                Task::perform(
-                    async move {
-                        let downloader = VideoFetcher::new(instance);
+        // if from_computer {
+        //     let maybe_video = Video::new(&Url::parse(&video).unwrap(), false);
 
-                        match downloader.get_video_details(&video).await {
-                            Ok(r) => Ok((Url::parse(&r.format_streams[0].url).unwrap(), r.live)),
-                            Err(e) => Err(PomeloError::new(e))
-                        }
-                    },
+        //     Task::done(
+        //         VideoPlayerMessage::LoadComplete(Ok((Url::parse(&video).unwrap(), false))).into()
+        //     )
+        // }
+        let invid_index = String::from(INVID_INSTANCES[instance.settings().invidious_index()].0);
+
+        Task::perform(
+            async move {
+                if from_computer {
+                    Url::parse(&video)
+                        .map(|url| (url, false))
+                        .map_err(PomeloError::new)
+                } 
+                else {
+                    let downloader = VideoFetcher::new(invid_index);
                     
-                    |result| VideoPlayerMessage::LoadComplete(result).into()
-                ),
-                Navigation::None
-            )
-        }
+                    match downloader.get_video_details(&video).await {
+                        Ok(r) => Url::parse(&r.format_streams[0].url)
+                            .map(|url| (url, r.live))
+                            .map_err(PomeloError::new),
+
+                        Err(e) => Err(PomeloError::new(e))
+                    }
+                }
+            },
+            move |result| VideoPlayerMessage::LoadComplete(video_index, result).into()
+        )
     }
 
     // Video finished loading, start playing if there were no errors.
-    fn on_load_complete(&mut self, result: Result<(Url, bool), PomeloError>) {
-        match result {
-            Ok((url, live)) => {
-                let video = match Video::new(&url, live) {
-                    Ok(mut v) => {
-                        let _ = v.seek(0);  // For some reason autoplay doesn't work properly without this line
-                        v.set_volume(self.video_volume);
-                        Ok(v)
-                    },
-                    Err(e) => {
-                        error!("Failed to load video: {}", e);
-                        Err(PomeloError::new(e))
-                    }
-                };
-                self.current_video = Some(video);
+    fn on_load_complete(&mut self, video_index: usize, result: Result<(Url, bool), PomeloError>, skip_on_error: bool) -> Task<Msg> {
+        let mut maybe_video = match result {
+            Ok((url, live)) => Video::new(&url, live).map_err(PomeloError::new),
+            Err(e) => {
+                Err(e)
+            }
+        };
+
+        let task = match &mut maybe_video {
+            Ok(video) => {
+                self.video_index = Wrapping(video_index);
+                let _ = video.seek(0);  // For some reason autoplay doesn't work properly without this line
+                video.set_volume(self.video_volume);
+                Task::none()
             },
 
             Err(e) => {
                 error!("Failed to load video: {}", e.error);
-                self.current_video = Some(Err(e));
+
+                if skip_on_error {
+                    if video_index < self.video_index.0 {
+                        Task::done(VideoPlayerMessage::NextVideo(video_index - 1).into())
+                    } 
+                    else {
+                        Task::done(VideoPlayerMessage::NextVideo(video_index + 1).into())
+                    }
+                }
+                else {
+                    Task::none()
+                }
             }
-        }
+        };
+
+        self.current_video = Some(maybe_video);
+
+        task
     }
 
     // Start loading the next video in the list.
-    fn next_video(&mut self, index: usize) -> (Task<Msg>, Navigation) {
+    fn next_video(&mut self, index: usize) -> Task<Msg> {
         if index < self.videos.len() {
             self.current_video = None;
-            self.video_index = Wrapping(index);
-            (
-                Task::perform(
-                    async {},
-                    |_| VideoPlayerMessage::LoadVideo.into()
-                ),
-                Navigation::None
-            )
+            //self.video_index = Wrapping(index);
+
+            Task::done(VideoPlayerMessage::LoadVideo(index).into())
         }
         else {
-            (Task::none(), Navigation::None)
+            Task::none()
         }
     }
 

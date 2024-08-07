@@ -136,8 +136,10 @@ impl LocalVideoPage {
             .map(|s| (String::from(s), true))
             .collect();
 
+        let index = if let VideoOrder::Sequential(i) = order {i} else {0};
+
         (
-            Task::done(VideoPlayerMessage::LoadVideo.into()),
+            Task::done(VideoPlayerMessage::LoadVideo(index).into()),
             Navigation::GoTo(Box::new(VideoPlayerPage::new(vids, order)))
         )
     }

@@ -82,6 +82,18 @@ impl PomeloPage for SettingsPage {
                 ].spacing(5)
             ].align_x(iced::Alignment::Center),
 
+            // Video options
+            column![
+                header("Playback"),
+
+                row![
+                    Text::new("Auto-skip on error"),
+
+                    Checkbox::new("", instance.settings().video_skip_on_error())
+                        .on_toggle(Msg::VideoSkipOnError)
+                ].spacing(5)
+            ],
+
             Button::new("Back").on_press(Msg::Back)
         ].spacing(25).align_x(iced::Alignment::Center).fill()
     }

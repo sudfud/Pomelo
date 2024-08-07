@@ -124,6 +124,11 @@ impl PomeloApp {
                 self.instance.settings_mut().set_use_nightly(checked);
                 Task::none()
             },
+
+            PomeloMessage::VideoSkipOnError(checked) => {
+                self.instance.settings_mut().set_video_skip_on_error(checked);
+                Task::none()            
+            }
     
             PomeloMessage::ThumbnailLoaded(result) => {
                 if let Ok((id, handle)) = result {

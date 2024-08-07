@@ -202,7 +202,7 @@ impl VideoInfoPage {
 
         let id = self.video.as_ref().unwrap().id.clone();
         (
-            Task::done(VideoPlayerMessage::LoadVideo.into()),
+            Task::done(VideoPlayerMessage::LoadVideo(0).into()),
             Navigation::GoTo(
                 Box::new(
                     VideoPlayerPage::new(VecDeque::from([(id, false)]), VideoOrder::Sequential(0))
