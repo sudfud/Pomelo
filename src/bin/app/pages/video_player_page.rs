@@ -8,7 +8,7 @@ use url::Url;
 
 use log::{info, error};
 
-use iced::{widget::shader::wgpu::naga::proc::index, Task};
+use iced::Task;
 
 use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
