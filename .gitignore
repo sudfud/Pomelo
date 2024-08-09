@@ -1,5 +1,6 @@
 /target
 /downloads
 /yt-dlp
+/ffmpeg
 /logs
 settings.json

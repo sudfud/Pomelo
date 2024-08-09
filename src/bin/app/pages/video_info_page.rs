@@ -11,13 +11,15 @@ use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
 use crate::yt_fetch::VideoFetcher;
 
-use super::{centered_text_button, DownloadInfo, PomeloInstance, Navigation, Msg};
+use super::{centered_text_button, DownloadInfo, DownloadFormat, DownloadQuality, PomeloInstance, Navigation, Msg};
 
 #[derive(Debug, Clone)]
 pub (crate) enum VideoInfoMessage {
     LoadVideo(String),
     VideoLoaded(Result<CommonVideo, PomeloError>),
     PlayVideo,
+    SetDownloadFormat(DownloadFormat),
+    SetDownloadQuality(DownloadQuality),
     DownloadVideo,
     NextChunk(String, Result<usize, PomeloError>),
     DownloadCancelled,
@@ -37,7 +39,9 @@ impl super::ConditionalMessage for VideoInfoMessage {}
 pub (crate) struct VideoInfoPage {
     video: Option<CommonVideo>,
     downloading: bool,
-    download_info: Option<super::DownloadInfo>,
+    selected_format: DownloadFormat,
+    selected_quality: DownloadQuality,
+    download_info: Option<DownloadInfo>,
     download_error: Option<PomeloError>
 }
 
@@ -75,6 +79,12 @@ impl super::PomeloPage for VideoInfoPage {
                 VideoInfoMessage::PlayVideo 
                     => return self.play_video(),
 
+                VideoInfoMessage::SetDownloadFormat(format)
+                    => self.selected_format = format,
+
+                VideoInfoMessage::SetDownloadQuality(quality)
+                    => self.selected_quality = quality,
+
                 VideoInfoMessage::DownloadVideo 
                     => return self.download_video(instance),
 
@@ -93,8 +103,8 @@ impl super::PomeloPage for VideoInfoPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::Length;
-        use iced::widget::{column, Column, Image, ProgressBar, Button, Text};
+        use iced::{Alignment, Length};
+        use iced::widget::{row, column, Column, Image, ProgressBar, Button, Text};
         use super::FillElement;
 
         match &self.video {
@@ -138,21 +148,38 @@ impl super::PomeloPage for VideoInfoPage {
 
                 // Draw playback, download, and navigation buttons.
                 else {
-                    column = column.extend(
-                        vec![
-                            centered_text_button("Play Video", Some(300), None::<Length>)
-                                .on_press(VideoInfoMessage::PlayVideo.into())
-                                .into(),
-        
-                            centered_text_button("Download Video", Some(300), None::<Length>)
-                                .on_press(VideoInfoMessage::DownloadVideo.into())
-                                .into(),
-        
+                    column = column.extend(vec![
+                        column![
+                            centered_text_button("Play", Some(100), None::<Length>)
+                                .on_press(VideoInfoMessage::PlayVideo.into()),
+
+                            column![
+                                centered_text_button("Download", Some(100), None::<Length>)
+                                    .on_press(VideoInfoMessage::DownloadVideo.into()),
+
+                                row![
+                                    labeled_picklist(
+                                        "Format",
+                                        DownloadFormat::ALL,
+                                        self.selected_format.clone(),
+                                        |fmt| VideoInfoMessage::SetDownloadFormat(fmt).into()
+                                    ),
+
+                                    labeled_picklist(
+                                        "Quality",
+                                        DownloadQuality::ALL,
+                                        self.selected_quality.clone(),
+                                        |q| VideoInfoMessage::SetDownloadQuality(q).into()
+                                    )
+                                ].spacing(10),
+
+                            ].align_x(Alignment::Center),
+
                             centered_text_button("Back", Some(100), None::<Length>)
                                 .on_press(Msg::Back)
-                                .into()       
-                        ]
-                    );
+
+                        ].spacing(50).align_x(Alignment::Center).into(),
+                    ]);
                 }
         
                 column.fill()
@@ -217,7 +244,11 @@ impl VideoInfoPage {
         use std::path::Path;
 
         let video = self.video.as_ref().unwrap();
-        let out_path = format!("./downloads/videos/{}", video.author);
+        let out_path = format!(
+            "./downloads/{}/{}",
+            if self.selected_format.is_audio() {"audio"} else {"videos"},
+            video.author
+        );
 
         info!("Downloading video: \"{}\"", video.title);
 
@@ -225,17 +256,47 @@ impl VideoInfoPage {
             let _ = std::fs::create_dir(&out_path);
         }
 
-        let args = [
+        let mut args = vec![
             &video.id,
             "-P",
             &out_path,
             "-q",
+            "-w",
             "--no-warnings",
             "--progress",
             "--newline",
             "--progress-template",
-            "download:%(progress.downloaded_bytes)s|%(progress.total_bytes)s"
+            "download:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.fragment_index)s|%(progress.fragment_count)s",
+            "--ffmpeg-location",
+            "./ffmpeg/bin"
         ];
+
+        let ext = self.selected_format.as_ext();
+        let quality: String;
+        let v_filter: String;
+
+        if self.selected_format.is_audio() {
+            args.extend([
+                "-x",
+                "--audio-format",
+                ext
+            ]);
+        }
+        else {
+            let q = self.selected_quality.num().to_string();
+            v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
+            quality = format!("res:{}", self.selected_quality.num().to_string());
+            println!("{}", quality);
+
+            args.extend([
+                "-S",
+                &quality,
+                "-f",
+                &v_filter,
+                "--remux-video",
+                ext
+            ]);
+        }
 
         let command = match instance.create_download_process(&args) {
             Ok((mut stdout, stderr)) => {
@@ -276,19 +337,23 @@ impl VideoInfoPage {
                 0 => Task::done(VideoInfoMessage::DownloadComplete(Ok(())).into()),
                 _ => {
 
-                    let nums: Vec<&str> = line.trim().split('|').collect();
+                    let nums: Vec<usize> = line
+                        .trim()
+                        .split('|')
+                        .map(|s| s.parse().unwrap_or_default())
+                        .collect();
+                    println!("{:?}", nums);
+
                     let info = self.download_info.as_mut().unwrap();
 
-                    if let Some(n_str) = nums.first() {
-                        if let Ok(n) = n_str.parse() {
-                            info.progress = n;
-                        }
+                    // Update progress bar, fallback to fragments if total_bytes is 0.
+                    if nums[1] != 0 {
+                        info.progress = nums[0];
+                        info.length = nums[1];
                     }
-
-                    if let Some(n_str) = nums.get(1) {
-                        if let Ok(n) = n_str.parse() {
-                            info.length = n;
-                        }
+                    else {
+                        info.progress = nums[2];
+                        info.length = nums[3];
                     }
 
                     let mut output = String::new();
@@ -363,4 +428,19 @@ fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigatio
         Task::done(VideoInfoMessage::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
         Navigation::None
     )
+}
+
+fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: impl Fn(T) -> Msg + 'a) -> iced::Element<Msg> 
+    where 
+        L: std::borrow::Borrow<[T]> + 'a,
+        T: ToString + PartialEq + Clone + 'a,
+        V: std::borrow::Borrow<T> + 'a
+{
+    use iced::Alignment;
+    use iced::widget::{column, PickList, Text};
+
+    column![
+        Text::new(text),
+        PickList::new(list, Some(select), on_select).width(200)
+    ].spacing(5).align_x(Alignment::Center).into()
 }
