@@ -8,22 +8,22 @@ use invidious::CommonVideo;
 use log::{info, error};
 
 use crate::INVID_INSTANCES;
-use crate::app::PomeloError;
+use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
 use crate::yt_fetch::VideoFetcher;
 
-use super::{centered_text_button, DownloadInfo, DownloadFormat, DownloadQuality, PomeloInstance, Navigation, Msg};
+use super::{DownloadInfo, PomeloInstance, Navigation, Msg};
 
 #[derive(Debug, Clone)]
 pub (crate) enum VideoInfoMessage {
     LoadVideo(String),
     VideoLoaded(Result<CommonVideo, PomeloError>),
     PlayVideo,
-    SetDownloadFormat(DownloadFormat),
-    SetDownloadQuality(DownloadQuality),
-    DownloadVideo,
-    NextChunk(String, Result<usize, PomeloError>),
-    DownloadCancelled,
-    DownloadComplete(Result<(), PomeloError>)
+    // SetDownloadFormat(DownloadFormat),
+    // SetDownloadQuality(DownloadQuality),
+    // DownloadVideo,
+    // NextChunk(String, Result<usize, PomeloError>),
+    // DownloadCancelled,
+    // DownloadComplete(Result<(), PomeloError>)
 }
 
 impl From<VideoInfoMessage> for Msg {
@@ -61,43 +61,66 @@ impl VideoInfoPage {
 impl super::PomeloPage for VideoInfoPage {
     fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
 
-        if let Msg::Back = message {
-            return (
-                Task::none(),
-                Navigation::Back
-            );
-        }
+        match message {
+            Msg::Back => return (Task::none(), Navigation::Back),
+            Msg::SetDownloadFormat(format) => self.selected_format = format,
+            Msg::SetDownloadQuality(quality) => self.selected_quality = quality,
+            Msg::StartDownload => return self.download_video(instance),
+            Msg::NextChunk(line, result) => return self.on_next_chunk(line, result),
+            Msg::DownloadCancelled => return on_download_cancelled(instance),
+            Msg::DownloadComplete(result) => self.on_download_complete(result),
 
-        if let Msg::VideoInfo(msg) = message {
-            match msg {
+            Msg::VideoInfo(msg) => match msg {
                 VideoInfoMessage::LoadVideo(id) 
                     => return load_video(id, instance.settings().invidious_index()),
 
-                VideoInfoMessage::VideoLoaded(result) 
+                VideoInfoMessage::VideoLoaded(result)
                     => return self.on_video_loaded(result),
 
-                VideoInfoMessage::PlayVideo 
-                    => return self.play_video(),
-
-                VideoInfoMessage::SetDownloadFormat(format)
-                    => self.selected_format = format,
-
-                VideoInfoMessage::SetDownloadQuality(quality)
-                    => self.selected_quality = quality,
-
-                VideoInfoMessage::DownloadVideo 
-                    => return self.download_video(instance),
-
-                VideoInfoMessage::NextChunk(line, result) 
-                    => return self.on_next_chunk(line, result),
-                    
-                VideoInfoMessage::DownloadComplete(result) 
-                    => self.on_download_complete(result),
-
-                VideoInfoMessage::DownloadCancelled
-                    => return on_download_cancelled(instance)
+                VideoInfoMessage::PlayVideo
+                    => return self.play_video()
             }
+
+            _ => ()
         }
+
+        // if let Msg::Back = message {
+        //     return (
+        //         Task::none(),
+        //         Navigation::Back
+        //     );
+        // }
+
+        // if let Msg::VideoInfo(msg) = message {
+        //     match msg {
+        //         VideoInfoMessage::LoadVideo(id) 
+        //             => return load_video(id, instance.settings().invidious_index()),
+
+        //         VideoInfoMessage::VideoLoaded(result) 
+        //             => return self.on_video_loaded(result),
+
+        //         VideoInfoMessage::PlayVideo 
+        //             => return self.play_video(),
+
+        //         VideoInfoMessage::SetDownloadFormat(format)
+        //             => self.selected_format = format,
+
+        //         VideoInfoMessage::SetDownloadQuality(quality)
+        //             => self.selected_quality = quality,
+
+        //         VideoInfoMessage::DownloadVideo 
+        //             => return self.download_video(instance),
+
+        //         VideoInfoMessage::NextChunk(line, result) 
+        //             => return self.on_next_chunk(line, result),
+                    
+        //         VideoInfoMessage::DownloadComplete(result) 
+        //             => self.on_download_complete(result),
+
+        //         VideoInfoMessage::DownloadCancelled
+        //             => return on_download_cancelled(instance)
+        //     }
+        // }
 
         (Task::none(), Navigation::None)
     }
@@ -105,7 +128,7 @@ impl super::PomeloPage for VideoInfoPage {
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
         use iced::{Alignment, Length};
         use iced::widget::{row, column, Column, Image, ProgressBar, Button, Text};
-        use super::FillElement;
+        use super::{centered_text_button, download_element, FillElement};
 
         match &self.video {
             Some(video) => {
@@ -140,7 +163,7 @@ impl super::PomeloPage for VideoInfoPage {
         
                             Button::new("Cancel")
                                 .width(200)
-                                .on_press(VideoInfoMessage::DownloadCancelled.into())
+                                .on_press(Msg::DownloadCancelled.into())
                                 .into()
                         ]
                     );
@@ -148,38 +171,40 @@ impl super::PomeloPage for VideoInfoPage {
 
                 // Draw playback, download, and navigation buttons.
                 else {
-                    column = column.extend(vec![
+                    column = column.push(
                         column![
                             centered_text_button("Play", Some(100), None::<Length>)
                                 .on_press(VideoInfoMessage::PlayVideo.into()),
 
-                            column![
-                                centered_text_button("Download", Some(100), None::<Length>)
-                                    .on_press(VideoInfoMessage::DownloadVideo.into()),
+                            download_element(&self.selected_format, &self.selected_quality),
 
-                                row![
-                                    labeled_picklist(
-                                        "Format",
-                                        DownloadFormat::ALL,
-                                        self.selected_format.clone(),
-                                        |fmt| VideoInfoMessage::SetDownloadFormat(fmt).into()
-                                    ),
+                            // column![
+                            //     centered_text_button("Download", Some(100), None::<Length>)
+                            //         .on_press(Msg::StartDownload.into()),
 
-                                    labeled_picklist(
-                                        "Quality",
-                                        DownloadQuality::ALL,
-                                        self.selected_quality.clone(),
-                                        |q| VideoInfoMessage::SetDownloadQuality(q).into()
-                                    )
-                                ].spacing(10),
+                            //     row![
+                            //         labeled_picklist(
+                            //             "Format",
+                            //             DownloadFormat::ALL,
+                            //             self.selected_format.clone(),
+                            //             |fmt| Msg::SetDownloadFormat(fmt).into()
+                            //         ),
 
-                            ].align_x(Alignment::Center),
+                            //         labeled_picklist(
+                            //             "Quality",
+                            //             DownloadQuality::ALL,
+                            //             self.selected_quality.clone(),
+                            //             |q| Msg::SetDownloadQuality(q).into()
+                            //         )
+                            //     ].spacing(10),
+
+                            // ].align_x(Alignment::Center),
 
                             centered_text_button("Back", Some(100), None::<Length>)
                                 .on_press(Msg::Back)
 
-                        ].spacing(50).align_x(Alignment::Center).into(),
-                    ]);
+                        ].spacing(50).align_x(Alignment::Center)
+                    );
                 }
         
                 column.fill()
@@ -307,11 +332,11 @@ impl VideoInfoPage {
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
                 Task::done(
-                    VideoInfoMessage::NextChunk(output, result.map_err(PomeloError::new)).into()
+                    Msg::NextChunk(output, result.map_err(PomeloError::new)).into()
                 )
             },
 
-            Err(e) => Task::done(VideoInfoMessage::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -323,7 +348,7 @@ impl VideoInfoPage {
         if line.to_lowercase().contains("error") {
             return (
                 Task::done(
-                    VideoInfoMessage::DownloadComplete(
+                    Msg::DownloadComplete(
                         Err(PomeloError::from(String::from("Failed to retrieve next video chunk.")))
                     ).into()
                 ),
@@ -334,7 +359,7 @@ impl VideoInfoPage {
 
         let command = match result {
             Ok(index) => match index {
-                0 => Task::done(VideoInfoMessage::DownloadComplete(Ok(())).into()),
+                0 => Task::done(Msg::DownloadComplete(Ok(())).into()),
                 _ => {
 
                     let nums: Vec<usize> = line
@@ -361,11 +386,11 @@ impl VideoInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(VideoInfoMessage::NextChunk(output, result).into())
+                    Task::done(Msg::NextChunk(output, result).into())
                 }
             },
 
-            Err(e) => Task::done(VideoInfoMessage::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -425,22 +450,7 @@ fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigatio
     instance.cancel_download();
     println!("Download cancelled!");
     (
-        Task::done(VideoInfoMessage::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
+        Task::done(Msg::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
         Navigation::None
     )
-}
-
-fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: impl Fn(T) -> Msg + 'a) -> iced::Element<Msg> 
-    where 
-        L: std::borrow::Borrow<[T]> + 'a,
-        T: ToString + PartialEq + Clone + 'a,
-        V: std::borrow::Borrow<T> + 'a
-{
-    use iced::Alignment;
-    use iced::widget::{column, PickList, Text};
-
-    column![
-        Text::new(text),
-        PickList::new(list, Some(select), on_select).width(200)
-    ].spacing(5).align_x(Alignment::Center).into()
 }

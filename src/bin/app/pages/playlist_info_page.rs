@@ -9,7 +9,7 @@ use invidious::universal::Playlist;
 use log::{info, error};
 
 use crate::app::instance::cache::PomeloCache;
-use crate::app::PomeloError;
+use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
 use crate::INVID_INSTANCES;
 
 use super::{PomeloInstance, DownloadInfo, Msg, Navigation};
@@ -20,10 +20,10 @@ pub (crate) enum PlaylistInfoMessage {
     LoadPlaylist(String),
     LoadComplete(Result<Playlist, PomeloError>),
     ToVideo(VideoOrder),
-    StartDownload,
-    NextChunk(String, Result<usize, PomeloError>),
-    DownloadCancelled,
-    DownloadComplete(Result<(), PomeloError>)
+    // StartDownload,
+    // NextChunk(String, Result<usize, PomeloError>),
+    // DownloadCancelled,
+    // DownloadComplete(Result<(), PomeloError>)
 }
 
 impl From<PlaylistInfoMessage> for Msg {
@@ -37,6 +37,8 @@ impl From<PlaylistInfoMessage> for Msg {
 pub (crate) struct PlaylistInfoPage {
     playlist: Option<Playlist>,
     videos: Vec<String>,
+    selected_format: DownloadFormat,
+    selected_quality: DownloadQuality,
     downloading: bool,
     download_info: Option<DownloadInfo>,
     download_index: usize,
@@ -46,13 +48,16 @@ pub (crate) struct PlaylistInfoPage {
 impl super::PomeloPage for PlaylistInfoPage {
     fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
 
-        // Return to search results page.
-        if let Msg::Back = message {
-            return (Task::none(), Navigation::Back);
-        }
+        match message {
+            Msg::Back => return (Task::none(), Navigation::Back),
+            Msg::SetDownloadFormat(format) => self.selected_format = format,
+            Msg::SetDownloadQuality(quality) => self.selected_quality = quality,
+            Msg::StartDownload => return self.start_download(instance),
+            Msg::NextChunk(line, result) => return self.on_next_chunk(line, result),
+            Msg::DownloadCancelled => return on_download_cancelled(instance),
+            Msg::DownloadComplete(result) => self.on_download_complete(result),
 
-        else if let Msg::PlaylistInfo(msg) = message {
-            match msg {
+            Msg::PlaylistInfo(msg) => match msg {
                 PlaylistInfoMessage::LoadPlaylist(id) 
                     => return self.load_playlist(id, instance.settings().invidious_index()),
 
@@ -61,19 +66,9 @@ impl super::PomeloPage for PlaylistInfoPage {
 
                 PlaylistInfoMessage::ToVideo(order)
                     => return self.go_to_video(order),
-
-                PlaylistInfoMessage::StartDownload
-                    => return self.start_download(instance),
-
-                PlaylistInfoMessage::NextChunk(output, result)
-                    => return self.on_next_chunk(output, result),
-
-                PlaylistInfoMessage::DownloadCancelled
-                    => return on_download_cancelled(instance),
-
-                PlaylistInfoMessage::DownloadComplete(result)
-                    => self.on_download_complete(result)
             }
+
+            _ => ()
         }
 
         (Task::none(), Navigation::None)
@@ -81,7 +76,7 @@ impl super::PomeloPage for PlaylistInfoPage {
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
         use iced::widget::{row, ProgressBar};
-        use super::{centered_text_button, ConditionalMessage, FillElement};
+        use super::{centered_text_button, download_element, ConditionalMessage, FillElement};
         
         let mut column = Column::new().spacing(10).align_x(iced::Alignment::Center);
 
@@ -113,7 +108,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                             ).width(instance.settings().window_size().0 / 2.0).into(),
 
                             centered_text_button("Cancel", Some(200), None::<Length>)
-                                .on_press(PlaylistInfoMessage::DownloadCancelled.into())
+                                .on_press(Msg::DownloadCancelled.into())
                                 .into()
                         ]
                     );
@@ -121,8 +116,8 @@ impl super::PomeloPage for PlaylistInfoPage {
 
                 // Draw playback and download buttons.
                 else {      
-                    column = column.extend(
-                        vec![
+                    column = column.push(
+                        column![
                             row![
                                 centered_text_button("Shuffle", Some(100), None::<Length>)
                                     .on_press(
@@ -133,26 +128,25 @@ impl super::PomeloPage for PlaylistInfoPage {
                                     .on_press(
                                         PlaylistInfoMessage::ToVideo(VideoOrder::Reversed).into()
                                     )
-                            ].spacing(10).into(),
+                            ].spacing(10),
 
-                            centered_text_button("Download Playlist", Some(200), None::<Length>)
-                                .on_press(PlaylistInfoMessage::StartDownload.into())
-                                .into()
-                        ]
+                            download_element(&self.selected_format, &self.selected_quality),
+
+                            centered_text_button("Back", Some(100), None::<Length>)
+                            .on_press_maybe(
+                                Msg::Back.on_condition(
+                                    !self.downloading && (self.playlist.is_some() || self.error.is_some())
+                                )
+                            )
+
+                            // centered_text_button("Download", Some(100), None::<Length>)
+                            //     .on_press(Msg::StartDownload.into())
+                        ].spacing(50).align_x(iced::Alignment::Center)
                     );
                 }
             },
             None => column = column.push("Loading...")
         }
-
-        column = column.push(
-            centered_text_button("Back", Some(100), None::<Length>)
-                .on_press_maybe(
-                    Msg::Back.on_condition(
-                        !self.downloading && (self.playlist.is_some() || self.error.is_some())
-                    )
-                )
-        );
 
         column.fill()
     }
@@ -232,7 +226,7 @@ impl PlaylistInfoPage {
         let title = filenamify(&playlist.title);
         let out_path = format!("./downloads/playlists/{} - {}", channel, title);
 
-        let args = [
+        let mut args = vec![
             &playlist.id,
             "-P",
             &out_path,
@@ -241,13 +235,42 @@ impl PlaylistInfoPage {
             "--progress",
             "--newline",
             "--progress-template",
-            "download:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(info.playlist_index)s",
+            "download:%(info.playlist_index)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.fragment_index)s|%(progress.fragment_count)s",
             "--output",
-            "%(playlist_index)s - %(title)s [%(id)s].%(ext)s"
+            "%(playlist_index)s - %(title)s [%(id)s].%(ext)s",
+            "--ffmpeg-location",
+            "./ffmpeg/bin"
         ];
 
         if !Path::exists(Path::new(&out_path)) {
             let _ = std::fs::create_dir(&out_path);
+        }
+
+        let ext = self.selected_format.as_ext();
+        let quality: String;
+        let v_filter: String;
+
+        if self.selected_format.is_audio() {
+            args.extend([
+                "-x",
+                "--audio-format",
+                ext
+            ]);
+        }
+        else {
+            let q = self.selected_quality.num().to_string();
+            v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
+            quality = format!("res:{}", self.selected_quality.num().to_string());
+            println!("{}", quality);
+
+            args.extend([
+                "-S",
+                &quality,
+                "-f",
+                &v_filter,
+                "--remux-video",
+                ext
+            ]);
         }
 
         let command = match instance.create_download_process(&args) {
@@ -258,10 +281,10 @@ impl PlaylistInfoPage {
                 self.downloading = true;
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
-                Task::done(PlaylistInfoMessage::NextChunk(output, result.map_err(PomeloError::new)).into())
+                Task::done(Msg::NextChunk(output, result.map_err(PomeloError::new)).into())
             },
 
-            Err(e) => Task::done(PlaylistInfoMessage::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -271,42 +294,60 @@ impl PlaylistInfoPage {
     fn on_next_chunk(&mut self, output: String, result: Result<usize, PomeloError>) -> (Task<Msg>, Navigation) {
         let command = match result {
             Ok(index) => match index {
-                0 => Task::done(PlaylistInfoMessage::DownloadComplete(Ok(())).into()),
+                0 => Task::done(Msg::DownloadComplete(Ok(())).into()),
                 _ => {
 
                     let info = self.download_info.as_mut().unwrap();
 
                     // Read formatted progress string from yt-dlp
-                    let nums: Vec<&str> = output.trim().split('|').collect();
+                    let nums: Vec<usize> = output
+                        .trim()
+                        .split('|')
+                        .map(|s| s.parse().unwrap_or_default())
+                        .collect();
 
-                    if let Some(n_str) = nums.first() {
-                        if let Ok(n) = n_str.parse() {
-                            info.progress = n;
-                        }
+                    self.download_index = nums[0];
+
+                    if nums[2] != 0 {
+                        info.progress = nums[1];
+                        info.length = nums[2];
                     }
 
-                    if let Some(n_str) = nums.get(1) {
-                        if let Ok(n) = n_str.parse() {
-                            info.length = n;
-                        }
+                    else {
+                        info.progress = nums[3];
+                        info.length = nums[4];
                     }
 
-                    if let Some(n_str) = nums.get(2) {
-                        if let Ok(n) = n_str.parse() {
-                            self.download_index = n;
-                        }
-                    }
+                    // let nums: Vec<&str> = output.trim().split('|').collect();
+
+                    // if let Some(n_str) = nums.first() {
+                    //     if let Ok(n) = n_str.parse() {
+                    //         self.download_index = n;
+                    //     }
+                    // }
+
+                    // if let Some(n_str) = nums.get(1) {
+                    //     if let Ok(n) = n_str.parse() {
+                    //         info.progress = n;
+                    //     }
+                    // }
+
+                    // if let Some(n_str) = nums.get(2) {
+                    //     if let Ok(n) = n_str.parse() {
+                    //         info.length = n;
+                    //     }
+                    // }
 
                     let mut output = String::new();
                     let result = info.stdout
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(PlaylistInfoMessage::NextChunk(output, result).into())
+                    Task::done(Msg::NextChunk(output, result).into())
                 }
             },
 
-            Err(e) => Task::done(PlaylistInfoMessage::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -362,7 +403,7 @@ impl PlaylistInfoPage {
     
         Scrollable::new(vids)
             .width(Length::Fill)
-            .height(instance.settings().window_size().1 * 3.0 / 4.0)
+            .height(instance.settings().window_size().1 / 2.0)
             .into()
     }
 }
@@ -372,7 +413,7 @@ fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigatio
     instance.cancel_download();
 
     (
-        Task::done(PlaylistInfoMessage::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
+        Task::done(Msg::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
         Navigation::None
     )
 }
