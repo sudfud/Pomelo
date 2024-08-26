@@ -255,7 +255,6 @@ impl VideoInfoPage {
             let q = self.selected_quality.num().to_string();
             v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
             quality = format!("res:{}", self.selected_quality.num().to_string());
-            println!("{}", quality);
 
             args.extend([
                 "-S",
@@ -311,7 +310,6 @@ impl VideoInfoPage {
                         .split('|')
                         .map(|s| s.parse().unwrap_or_default())
                         .collect();
-                    println!("{:?}", nums);
 
                     let info = self.download_info.as_mut().unwrap();
 
@@ -351,8 +349,6 @@ impl VideoInfoPage {
 
         else {
             let info = self.download_info.take().unwrap();
-            
-            println!("Download complete!");
 
             if let Some(Ok(line)) = info.stderr.lines().last() {
                 error!("Download failed: {}", line);
@@ -392,7 +388,6 @@ fn load_video(id: String, instance_index: usize) -> (Task<Msg>, Navigation) {
 // Download was cancelled by the user.
 fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
     instance.cancel_download();
-    println!("Download cancelled!");
     (
         Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
         Navigation::None

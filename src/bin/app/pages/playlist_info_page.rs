@@ -249,9 +249,7 @@ impl PlaylistInfoPage {
             "--progress-template",
             "download:%(info.playlist_index)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.fragment_index)s|%(progress.fragment_count)s",
             "--output",
-            "%(playlist_index)s - %(title)s [%(id)s].%(ext)s",
-            // "--ffmpeg-location",
-            // "./ffmpeg/bin"
+            "%(playlist_index)s - %(title)s [%(id)s].%(ext)s"
         ];
 
         if !Path::exists(Path::new(&out_path)) {
@@ -273,7 +271,6 @@ impl PlaylistInfoPage {
             let q = self.selected_quality.num().to_string();
             v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
             quality = format!("res:{}", self.selected_quality.num().to_string());
-            println!("{}", quality);
 
             args.extend([
                 "-S",
