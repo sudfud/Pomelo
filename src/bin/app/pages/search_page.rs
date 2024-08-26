@@ -50,9 +50,8 @@ impl PomeloPage for SearchPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::Length;
-        use iced::widget::{column, row, TextInput, Radio};
-        use super::{centered_text_button, FillElement};
+        use iced::widget::{column, row, TextInput, Radio, Button, Text};
+        use super::FillElement;
 
         let input = TextInput::new("Search or Enter Youtube URL", &self.search_input)
             .on_input(|s| SearchMessage::UpdateInput(s).into())
@@ -61,7 +60,6 @@ impl PomeloPage for SearchPage {
             .width(instance.settings().window_size().0 / 2.0);
 
         let set_search_type = |s_type| SearchMessage::SetSearchType(s_type).into();
-
 
         column![
             input,
@@ -86,10 +84,13 @@ impl PomeloPage for SearchPage {
                 )
             ].spacing(10),
 
-            centered_text_button("Search", Some(100), None::<Length>)
+            Button::new(Text::new("Search").center())
+                .width(100)
                 .on_press(SearchMessage::SubmitQuery.into()),
 
-            centered_text_button("Back", Some(100), None::<Length>).on_press(Msg::Back)
+            Button::new(Text::new("Back").center())
+                .width(100)
+                .on_press(Msg::Back)
 
         ].spacing(25).align_x(iced::Alignment::Center).fill()
 

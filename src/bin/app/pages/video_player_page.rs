@@ -10,6 +10,7 @@ use log::{info, error};
 
 use iced::Task;
 
+use crate::app::pages::ConditionalElement;
 use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
 use iced_video_player::Video;
@@ -25,7 +26,8 @@ pub (crate) enum VideoPlayerMessage {
     VolumeUpdate(f64),
     NextFrame,
     Seek(f64),
-    SeekRelease
+    SeekRelease,
+    SkipTimer(u8, usize)
 }
 
 impl From<VideoPlayerMessage> for Msg {
@@ -44,7 +46,10 @@ pub (crate) struct VideoPlayerPage {
     video_paused: bool,
     video_position: f64,
     video_volume: f64,
-    seeking: bool
+    seeking: bool,
+    skip_timer: Option<iced::task::Handle>,
+    auto_skipping: bool,
+    skip_time: u8
 }
 
 impl super::PomeloPage for VideoPlayerPage {
@@ -52,6 +57,10 @@ impl super::PomeloPage for VideoPlayerPage {
     fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
 
         if let Msg::Back = message {
+            if let Some(timer) = self.skip_timer.take() {
+                timer.abort();
+            }
+
             return (Task::none(), Navigation::Back);
         }
 
@@ -73,6 +82,12 @@ impl super::PomeloPage for VideoPlayerPage {
                     Navigation::None
                 ),
 
+                
+                VideoPlayerMessage::SkipTimer(time, index) => return (
+                    self.skip_timer_update(time, index),
+                    Navigation::None
+                ),
+
                 VideoPlayerMessage::PlayToggle => self.toggle_playback(),
                 VideoPlayerMessage::VolumeUpdate(f) => self.set_volume(f),
                 VideoPlayerMessage::Seek(f) => self.seek(f),
@@ -86,10 +101,9 @@ impl super::PomeloPage for VideoPlayerPage {
 
     fn view(&self, _instance: &PomeloInstance) -> iced::Element<Msg> {
         use crate::utils;
-        use iced::Length;
-        use iced::widget::{row, Column, Text, Slider};
+        use iced::widget::{row, Row, Column, Text, Slider, Button};
         use iced_video_player::VideoPlayer;
-        use super::{centered_text_button, ConditionalMessage};
+        use super::ConditionalMessage;
 
         if let Some(result) = &self.current_video {
 
@@ -124,7 +138,8 @@ impl super::PomeloPage for VideoPlayerPage {
                         row![
 
                             // Play/Pause button
-                            centered_text_button(play_button_text, Some(100), None::<Length>)
+                            Button::new(Text::new(play_button_text).center())
+                                .width(100)
                                 .on_press(VideoPlayerMessage::PlayToggle.into()),
 
                             // Label for elapsed time
@@ -155,31 +170,44 @@ impl super::PomeloPage for VideoPlayerPage {
                                 |f| VideoPlayerMessage::VolumeUpdate(f).into()
                             ).width(100).step(0.01)
 
-                        ].spacing(10),
+                        ].spacing(10)
                     );
                 },
                 Err(e) => {
-                    column = column.push(Text::new(e.error.to_string()));
+                    let error_msg = e.error.to_string();
+                    column = column.push(Text::new(error_msg).center());
+                    if self.auto_skipping {
+                        let skip_str = format!("Skipping in {}", self.skip_time);
+                        column = column.push(Text::new(skip_str).center())
+                    }
                 }
             }
 
-            let buttons = row![
+            let mut buttons = Row::<Msg>::new().spacing(25);
 
-                centered_text_button("Prev", Some(100), None::<Length>)
+            buttons = buttons.push_maybe(
+                Button::new(Text::new("Prev").center())
+                    .width(100)
                     .on_press_maybe(
                         VideoPlayerMessage::NextVideo((self.video_index - Wrapping(1)).0)
-                        .on_condition(self.video_index.0 > 0)
-                    ),
+                        .on_condition(self.video_index.0 > 0))
+                    .on_condition(self.videos.len() > 1)
+            );
 
-                centered_text_button("Back", Some(100), None::<Length>).on_press(Msg::Back),
-                
-                centered_text_button("Next", Some(100), None::<Length>)
+            buttons = buttons.push(
+                Button::new(Text::new("Back").center())
+                    .width(100)
+                    .on_press(Msg::Back)
+            );
+
+            buttons = buttons.push_maybe(
+                Button::new(Text::new("Next").center())
+                    .width(100)
                     .on_press_maybe(
                         VideoPlayerMessage::NextVideo((self.video_index+Wrapping(1)).0)
-                            .on_condition(self.video_index.0 < self.videos.len())
-                    ),
-
-            ].spacing(25);
+                            .on_condition(self.video_index.0 < self.videos.len()-1))
+                    .on_condition(self.videos.len() > 1)
+            );
 
             column = column.push(buttons);
 
@@ -206,13 +234,6 @@ impl VideoPlayerPage {
 
         info!("Loading video for playback: {}", video);
 
-        // if from_computer {
-        //     let maybe_video = Video::new(&Url::parse(&video).unwrap(), false);
-
-        //     Task::done(
-        //         VideoPlayerMessage::LoadComplete(Ok((Url::parse(&video).unwrap(), false))).into()
-        //     )
-        // }
         let invid_index = String::from(INVID_INSTANCES[instance.settings().invidious_index()].0);
 
         Task::perform(
@@ -258,15 +279,29 @@ impl VideoPlayerPage {
             Err(e) => {
                 error!("Failed to load video: {}", e.error);
 
-                if skip_on_error {
-                    if video_index < self.video_index.0 {
-                        Task::done(VideoPlayerMessage::NextVideo(video_index - 1).into())
-                    } 
-                    else {
-                        Task::done(VideoPlayerMessage::NextVideo(video_index + 1).into())
-                    }
+                if skip_on_error && !(video_index == 0 || video_index == self.videos.len()-1) {
+
+                    let next_index = if self.video_index.0 <= video_index {
+                        video_index + 1
+                    } else if video_index > 0 {
+                        video_index - 1
+                    } else {
+                        0
+                    };
+                    
+                    self.video_index = Wrapping(video_index);
+                    self.auto_skipping = true;
+
+                    let (timer, handle) = Task::done(
+                        VideoPlayerMessage::SkipTimer(5, next_index).into()
+                    ).abortable();
+
+                    self.skip_timer = Some(handle);
+
+                    timer
                 }
                 else {
+                    self.video_index = Wrapping(video_index);
                     Task::none()
                 }
             }
@@ -279,7 +314,14 @@ impl VideoPlayerPage {
 
     // Start loading the next video in the list.
     fn next_video(&mut self, index: usize) -> Task<Msg> {
-        if index < self.videos.len() {
+
+        if let Some(handle) = self.skip_timer.take() {
+            handle.abort();
+        }
+
+        if index > self.video_index.0 && index < self.videos.len() ||
+            index < self.video_index.0 && index > 0 
+        {
             self.current_video = None;
             //self.video_index = Wrapping(index);
 
@@ -336,6 +378,24 @@ impl VideoPlayerPage {
             }
         }
     }
+
+    fn skip_timer_update(&mut self, time: u8, index: usize) -> Task<Msg> {
+        self.skip_time = time;
+
+        if time == 0 {
+            self.auto_skipping = false;
+            Task::done(VideoPlayerMessage::NextVideo(index).into())
+        }
+        else {
+
+            Task::perform(
+                async {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                },
+                move |_| VideoPlayerMessage::SkipTimer(time - 1, index).into()
+            )
+        }
+    }
 }
 
 impl VideoPlayerPage {
@@ -361,7 +421,10 @@ impl VideoPlayerPage {
             video_paused: false,
             video_position: 0.0,
             video_volume: 0.5,
-            seeking: false
+            seeking: false,
+            skip_timer: None,
+            auto_skipping: false,
+            skip_time: 0
         }
     }
 

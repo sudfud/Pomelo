@@ -42,16 +42,21 @@ impl PomeloPage for MainMenu {
     }
 
     fn view(&self, _instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::Length;
-        use super::{centered_text_button, FillElement};
+        use iced::widget::{Button, Text};
+        use super::FillElement;
 
         // Draw buttons
         iced::widget::column![
-            centered_text_button("Play from Computer", Some(200), None::<Length>)
+            Button::new(Text::new("Play from Computer").center())
+                .width(200)
                 .on_press(MainMenuMessage::LocalVideoPage.into()),
-            centered_text_button("Play from Youtube", Some(200), None::<Length>)
+
+            Button::new(Text::new("Play from Youtube").center())
+                .width(200)
                 .on_press(MainMenuMessage::SearchPage.into()),
-            centered_text_button("Settings", Some(200), None::<Length>)
+
+            Button::new(Text::new("Settings").center())
+                .width(200)
                 .on_press(MainMenuMessage::SettingsPage.into())
         ].spacing(25).fill()
     }

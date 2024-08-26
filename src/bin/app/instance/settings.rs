@@ -8,6 +8,7 @@ pub (crate) struct PomeloSettings {
     window_size: (f32, f32),
     invidious_index: usize,
     yt_dlp_use_nightly: bool,
+    yt_dlp_download_folder: String,
     video_skip_on_error: bool,
 }
 
@@ -18,6 +19,7 @@ impl PomeloSettings {
             window_size: (500.0, 500.0),
             invidious_index: 0,
             yt_dlp_use_nightly: false,
+            yt_dlp_download_folder: String::from("./downloads"),
             video_skip_on_error: false
         }   
     }
@@ -44,6 +46,14 @@ impl PomeloSettings {
 
     pub (crate) fn set_use_nightly(&mut self, nightly: bool) {
         self.yt_dlp_use_nightly = nightly;
+    }
+
+    pub (crate) fn download_folder(&self) -> &str {
+        &self.yt_dlp_download_folder
+    }
+
+    pub (crate) fn set_download_folder(&mut self, path: &str) {
+        self.yt_dlp_download_folder = String::from(path);
     }
 
     pub (crate) fn video_skip_on_error(&self) -> bool {

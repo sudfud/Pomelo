@@ -128,24 +128,21 @@ pub (crate) enum PomeloMessage {
     SearchResults(pages::SearchResultsMessage),
     VideoInfo(pages::VideoInfoMessage),
     PlaylistInfo(pages::PlaylistInfoMessage),
+    Settings(pages::SettingsMessage),
 
-    StartDownload,
+    StartVideoDownload,
     SetDownloadFormat(DownloadFormat),
     SetDownloadQuality(DownloadQuality),
-    NextChunk(String, Result<usize, PomeloError>),
-    DownloadCancelled,
-    DownloadComplete(Result<(), PomeloError>),
-
+    NextVideoChunk(String, Result<usize, PomeloError>),
+    VideoDownloadCancelled,
+    VideoDownloadComplete(Result<(), PomeloError>),
     
     WindowResize((window::Id, Size)),
-    InvidiousSetInstance(usize),
-    YtUseNightly(bool),
-    VideoSkipOnError(bool),
 
     ThumbnailLoaded(Result<Thumbnail, PomeloError>),
 
     Back,
-    //Home,
+    Home,
 
     Close(window::Id)
 }
@@ -159,8 +156,7 @@ pub (crate) struct PomeloApp {
 impl PomeloApp {
     pub (crate) fn new() -> (Self, Task<PomeloMessage>) {
         use iced::advanced::graphics::image::image_rs::ImageFormat;
-        
-        
+            
         let settings = match PomeloSettings::load() {
             Ok(s) => s,
             Err(e) => {
@@ -202,21 +198,6 @@ impl PomeloApp {
                 self.instance.settings_mut().set_window_size(size.width, size.height);
                 Task::none()
             },
-
-            PomeloMessage::InvidiousSetInstance(index) => {
-                self.instance.settings_mut().set_invidious_index(index);
-                Task::none()
-            },
-    
-            PomeloMessage::YtUseNightly(checked) => {
-                self.instance.settings_mut().set_use_nightly(checked);
-                Task::none()
-            },
-
-            PomeloMessage::VideoSkipOnError(checked) => {
-                self.instance.settings_mut().set_video_skip_on_error(checked);
-                Task::none()            
-            }
     
             PomeloMessage::ThumbnailLoaded(result) => {
                 if let Ok((id, handle)) = result {
@@ -243,6 +224,9 @@ impl PomeloApp {
                 match navigation {
                     Navigation::GoTo(page) => self.page_stack.push(page),
                     Navigation::Back => {self.page_stack.pop();},
+                    Navigation::Home => while self.page_stack.len() > 1 {
+                        self.page_stack.pop();
+                    }
                     Navigation::None => {}
                 }
 

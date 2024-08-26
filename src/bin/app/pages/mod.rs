@@ -25,7 +25,8 @@ pub (crate) use self::{
     search_results_page::SearchResultsMessage,
     video_info_page::VideoInfoMessage,
     playlist_info_page::PlaylistInfoMessage,
-    video_player_page::VideoPlayerMessage
+    video_player_page::VideoPlayerMessage,
+    settings_page::SettingsMessage
 };
 
 type Msg = crate::app::PomeloMessage;
@@ -34,6 +35,7 @@ type Msg = crate::app::PomeloMessage;
 pub (crate) enum Navigation {
     GoTo(Box<dyn PomeloPage>),
     Back,
+    Home,
     None
 }
 
@@ -64,6 +66,20 @@ impl <'a, T> FillElement<'a, T> for T where T: Into<Element<'a, Msg>> {
             .into()
     }
 }
+
+trait ConditionalElement<'a> {
+    fn on_condition(self, condition: bool) -> Option<Element<'a, Msg>> where Self: Into<Element<'a, Msg>> {
+        if condition {
+            Some(self.into())
+        }
+        else {
+            None
+        }
+    }
+}
+
+impl <'a> ConditionalElement<'a> for iced::widget::Button<'a, Msg> {}
+impl <'a> ConditionalElement<'a> for iced::Element<'a, Msg> {}
 
 // Convenience trait for optional messages
 trait ConditionalMessage {
@@ -101,50 +117,35 @@ impl DownloadInfo {
     }
 }
 
-// Convenience method, making a button with centered text in Iced is more tedious than it needs to be. (Not as bad in 0.13 though)
-fn centered_text_button(
-    text: &str,
-    width: Option<impl Into<Length>>,
-    height: Option<impl Into<Length>>) -> iced::widget::Button<Msg> {
-
-    use iced::{widget::{Text, Button}, alignment::Horizontal};
-
-    let text_widget = Text::new(text).align_x(Horizontal::Center);
-    let mut button = Button::new(text_widget);
-
-    if let Some(w) = width {
-        button = button.width(w);
-    }
-
-    if let Some(h) = height {
-        button = button.height(h);
-    }
-
-    button
-}
-
 fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality) -> iced::Element<'a, Msg> {
-    use iced::widget::{column, row};
+    use iced::widget::{column, Row, Button, Text};
+
+    let mut row = Row::new().spacing(10);
+
+    row = row.push(
+        labeled_picklist(
+            "Format",
+            DownloadFormat::ALL,
+            format.clone(),
+            |fmt| Msg::SetDownloadFormat(fmt).into()
+        )  
+    );
+
+    row = row.push_maybe(
+        labeled_picklist(
+            "Quality",
+            DownloadQuality::ALL,
+            quality.clone(),
+            |q| Msg::SetDownloadQuality(q).into()
+        ).on_condition(!format.is_audio())
+    );
 
     column![
-        centered_text_button("Download", Some(100), None::<Length>)
-            .on_press(Msg::StartDownload.into()),
+        Button::new(Text::new("Download").center())
+            .width(100)
+            .on_press(Msg::StartVideoDownload.into()),
 
-        row![
-            labeled_picklist(
-                "Format",
-                DownloadFormat::ALL,
-                format.clone(),
-                |fmt| Msg::SetDownloadFormat(fmt).into()
-            ),
-
-            labeled_picklist(
-                "Quality",
-                DownloadQuality::ALL,
-                quality.clone(),
-                |q| Msg::SetDownloadQuality(q).into()
-            )
-        ].spacing(10),
+        row
 
     ].align_x(iced::Alignment::Center).into()
 }

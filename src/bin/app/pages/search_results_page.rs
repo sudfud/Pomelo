@@ -102,6 +102,10 @@ impl super::PomeloPage for SearchResultsPage {
             return (Task::none(), Navigation::Back);
         }
 
+        else if let Msg::Home = message {
+            return (Task::none(), Navigation::Home);
+        }
+
         else if let Msg::SearchResults(msg) = message {
             match msg {
                 SearchResultsMessage::StartSearch 
@@ -128,30 +132,37 @@ impl super::PomeloPage for SearchResultsPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> Element<Msg> {
-        use super::{ConditionalMessage, centered_text_button};
+        use iced::widget::{Button, Text};
+        use super::ConditionalMessage;
 
         if let Some(result) = &self.search_results {
             let result_element = self.get_search_results_element(result, instance);
 
             let buttons = row![
-                centered_text_button("Prev", Some(100), None::<Length>)
+                Button::new(Text::new("Prev").center())
+                    .width(100)
                     .on_press_maybe(
                         SearchResultsMessage::NewPage(self.page_number-1)
                             .on_condition(self.page_number > 1)
                     ),
             
-                centered_text_button("Back", Some(100), None::<Length>)
+                Button::new(Text::new("Back").center())
+                    .width(100)
                     .on_press(Msg::Back),
             
-                centered_text_button("Next", Some(100), None::<Length>)
+                Button::new(Text::new("Next").center())
+                    .width(100)
                     .on_press(SearchResultsMessage::NewPage(self.page_number+1).into())
             
             ].spacing(25);
     
             column![
                 result_element,
-                buttons.fill(),
-            ].align_x(iced::Alignment::Center).into()
+                buttons,
+                Button::new(Text::new("Home").center())
+                    .width(100)
+                    .on_press(Msg::Home)
+            ].align_x(iced::Alignment::Center).spacing(25).into()
         }
         else {
             "Loading...".fill()

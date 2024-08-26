@@ -17,13 +17,7 @@ use super::{DownloadInfo, PomeloInstance, Navigation, Msg};
 pub (crate) enum VideoInfoMessage {
     LoadVideo(String),
     VideoLoaded(Result<CommonVideo, PomeloError>),
-    PlayVideo,
-    // SetDownloadFormat(DownloadFormat),
-    // SetDownloadQuality(DownloadQuality),
-    // DownloadVideo,
-    // NextChunk(String, Result<usize, PomeloError>),
-    // DownloadCancelled,
-    // DownloadComplete(Result<(), PomeloError>)
+    PlayVideo
 }
 
 impl From<VideoInfoMessage> for Msg {
@@ -63,12 +57,13 @@ impl super::PomeloPage for VideoInfoPage {
 
         match message {
             Msg::Back => return (Task::none(), Navigation::Back),
+            Msg::Home => return (Task::none(), Navigation::Home),
             Msg::SetDownloadFormat(format) => self.selected_format = format,
             Msg::SetDownloadQuality(quality) => self.selected_quality = quality,
-            Msg::StartDownload => return self.download_video(instance),
-            Msg::NextChunk(line, result) => return self.on_next_chunk(line, result),
-            Msg::DownloadCancelled => return on_download_cancelled(instance),
-            Msg::DownloadComplete(result) => self.on_download_complete(result),
+            Msg::StartVideoDownload => return self.download_video(instance),
+            Msg::NextVideoChunk(line, result) => return self.on_next_chunk(line, result),
+            Msg::VideoDownloadCancelled => return on_download_cancelled(instance),
+            Msg::VideoDownloadComplete(result) => self.on_download_complete(result),
 
             Msg::VideoInfo(msg) => match msg {
                 VideoInfoMessage::LoadVideo(id) 
@@ -84,51 +79,13 @@ impl super::PomeloPage for VideoInfoPage {
             _ => ()
         }
 
-        // if let Msg::Back = message {
-        //     return (
-        //         Task::none(),
-        //         Navigation::Back
-        //     );
-        // }
-
-        // if let Msg::VideoInfo(msg) = message {
-        //     match msg {
-        //         VideoInfoMessage::LoadVideo(id) 
-        //             => return load_video(id, instance.settings().invidious_index()),
-
-        //         VideoInfoMessage::VideoLoaded(result) 
-        //             => return self.on_video_loaded(result),
-
-        //         VideoInfoMessage::PlayVideo 
-        //             => return self.play_video(),
-
-        //         VideoInfoMessage::SetDownloadFormat(format)
-        //             => self.selected_format = format,
-
-        //         VideoInfoMessage::SetDownloadQuality(quality)
-        //             => self.selected_quality = quality,
-
-        //         VideoInfoMessage::DownloadVideo 
-        //             => return self.download_video(instance),
-
-        //         VideoInfoMessage::NextChunk(line, result) 
-        //             => return self.on_next_chunk(line, result),
-                    
-        //         VideoInfoMessage::DownloadComplete(result) 
-        //             => self.on_download_complete(result),
-
-        //         VideoInfoMessage::DownloadCancelled
-        //             => return on_download_cancelled(instance)
-        //     }
-        // }
-
         (Task::none(), Navigation::None)
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
         use iced::{Alignment, Length};
-        use iced::widget::{row, column, Column, Image, ProgressBar, Button, Text};
-        use super::{centered_text_button, download_element, FillElement};
+        use iced::widget::{column, Column, Image, ProgressBar, Button, Text, Scrollable};
+        use super::{download_element, FillElement};
 
         match &self.video {
             Some(video) => {
@@ -163,7 +120,7 @@ impl super::PomeloPage for VideoInfoPage {
         
                             Button::new("Cancel")
                                 .width(200)
-                                .on_press(Msg::DownloadCancelled.into())
+                                .on_press(Msg::VideoDownloadCancelled.into())
                                 .into()
                         ]
                     );
@@ -173,41 +130,27 @@ impl super::PomeloPage for VideoInfoPage {
                 else {
                     column = column.push(
                         column![
-                            centered_text_button("Play", Some(100), None::<Length>)
+                            Button::new(Text::new("Play").center())
+                                .width(100)
                                 .on_press(VideoInfoMessage::PlayVideo.into()),
 
                             download_element(&self.selected_format, &self.selected_quality),
 
-                            // column![
-                            //     centered_text_button("Download", Some(100), None::<Length>)
-                            //         .on_press(Msg::StartDownload.into()),
+                            column![
+                                Button::new(Text::new("Back").center())
+                                    .width(100)
+                                    .on_press(Msg::Back),
 
-                            //     row![
-                            //         labeled_picklist(
-                            //             "Format",
-                            //             DownloadFormat::ALL,
-                            //             self.selected_format.clone(),
-                            //             |fmt| Msg::SetDownloadFormat(fmt).into()
-                            //         ),
-
-                            //         labeled_picklist(
-                            //             "Quality",
-                            //             DownloadQuality::ALL,
-                            //             self.selected_quality.clone(),
-                            //             |q| Msg::SetDownloadQuality(q).into()
-                            //         )
-                            //     ].spacing(10),
-
-                            // ].align_x(Alignment::Center),
-
-                            centered_text_button("Back", Some(100), None::<Length>)
-                                .on_press(Msg::Back)
+                                Button::new(Text::new("Home").center())
+                                    .width(100)
+                                    .on_press(Msg::Home)
+                            ].spacing(25)
 
                         ].spacing(50).align_x(Alignment::Center)
                     );
                 }
-        
-                column.fill()
+
+                Scrollable::new(column.width(Length::Fill)).fill()
             },
             None => Text::new("Loading...").fill()
         }
@@ -247,7 +190,7 @@ impl VideoInfoPage {
         (command, Navigation::None)
     }
 
-    // Move video player page.
+    // Move to video player page.
     fn play_video(&self) -> (Task<Msg>, Navigation) {
         use super::VideoOrder;
         use super::video_player_page::{VideoPlayerMessage, VideoPlayerPage};
@@ -270,7 +213,8 @@ impl VideoInfoPage {
 
         let video = self.video.as_ref().unwrap();
         let out_path = format!(
-            "./downloads/{}/{}",
+            "{}/{}/{}",
+            instance.settings().download_folder(),
             if self.selected_format.is_audio() {"audio"} else {"videos"},
             video.author
         );
@@ -292,8 +236,8 @@ impl VideoInfoPage {
             "--newline",
             "--progress-template",
             "download:%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.fragment_index)s|%(progress.fragment_count)s",
-            "--ffmpeg-location",
-            "./ffmpeg/bin"
+            //"--ffmpeg-location",
+            //"./ffmpeg/bin"
         ];
 
         let ext = self.selected_format.as_ext();
@@ -332,11 +276,11 @@ impl VideoInfoPage {
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
                 Task::done(
-                    Msg::NextChunk(output, result.map_err(PomeloError::new)).into()
+                    Msg::NextVideoChunk(output, result.map_err(PomeloError::new)).into()
                 )
             },
 
-            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -348,7 +292,7 @@ impl VideoInfoPage {
         if line.to_lowercase().contains("error") {
             return (
                 Task::done(
-                    Msg::DownloadComplete(
+                    Msg::VideoDownloadComplete(
                         Err(PomeloError::from(String::from("Failed to retrieve next video chunk.")))
                     ).into()
                 ),
@@ -359,7 +303,7 @@ impl VideoInfoPage {
 
         let command = match result {
             Ok(index) => match index {
-                0 => Task::done(Msg::DownloadComplete(Ok(())).into()),
+                0 => Task::done(Msg::VideoDownloadComplete(Ok(())).into()),
                 _ => {
 
                     let nums: Vec<usize> = line
@@ -386,11 +330,11 @@ impl VideoInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(Msg::NextChunk(output, result).into())
+                    Task::done(Msg::NextVideoChunk(output, result).into())
                 }
             },
 
-            Err(e) => Task::done(Msg::DownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
         };
 
         (command, Navigation::None)
@@ -450,7 +394,7 @@ fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigatio
     instance.cancel_download();
     println!("Download cancelled!");
     (
-        Task::done(Msg::DownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
+        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
         Navigation::None
     )
 }

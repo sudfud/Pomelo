@@ -27,20 +27,63 @@ impl Display for InstanceIndex {
     }
 }
 
+#[derive(Debug, Clone)]
+pub (crate) enum SettingsMessage {
+    InvidiousSetInstance(usize),
+    YtUseNightly(bool),
+    SetDownloadFolder(String),
+    VideoSkipOnError(bool),
+    OpenFolderPicker
+}
+
+impl From<SettingsMessage> for Msg {
+    fn from(value: SettingsMessage) -> Self {
+        Msg::Settings(value)
+    }
+}
+
 // Page that allows users to modify Pomelo settings.
 pub (crate) struct SettingsPage;
 
 impl PomeloPage for SettingsPage {
-    fn update(&mut self, _instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+
+        let settings = instance.settings_mut();
+
         if let Msg::Back = message {
-            return (Task::none(), Navigation::Back);
+            (Task::none(), Navigation::Back)
         }
 
-        (Task::none(), Navigation::None)
+        else if let Msg::Settings(msg) = message {
+            match msg {
+                SettingsMessage::InvidiousSetInstance(index) 
+                    => settings.set_invidious_index(index),
+        
+                SettingsMessage::YtUseNightly(checked) 
+                    => settings.set_use_nightly(checked),
+
+                SettingsMessage::SetDownloadFolder(path) 
+                    => settings.set_download_folder(&path),
+
+                SettingsMessage::VideoSkipOnError(checked) 
+                    => settings.set_video_skip_on_error(checked),
+
+                SettingsMessage::OpenFolderPicker => return (
+                    open_folder_picker(instance.settings().download_folder()),
+                    Navigation::None
+                )
+            }
+
+            (Task::none(), Navigation::None)
+        }
+
+        else {
+            (Task::none(), Navigation::None)
+        }
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::widget::{column, row, PickList, Button, Checkbox};
+        use iced::widget::{column, row, PickList, Button, Checkbox, TextInput};
         use super::FillElement;
 
         column![
@@ -61,10 +104,10 @@ impl PomeloPage for SettingsPage {
                             .map(InstanceIndex::new)
                             .collect::<Vec<_>>(),
                         Some(InstanceIndex::new(instance.settings().invidious_index())),
-                        |index| Msg::InvidiousSetInstance(index.n)
+                        |index| SettingsMessage::InvidiousSetInstance(index.n).into()
                     )
                 ].spacing(10)
-            ].align_x(iced::Alignment::Center),
+            ].spacing(10).align_x(iced::Alignment::Center),
 
             // Yt-dlp options
             column![
@@ -78,9 +121,17 @@ impl PomeloPage for SettingsPage {
                     ),
 
                     Checkbox::new("", instance.settings().use_nightly())
-                        .on_toggle(Msg::YtUseNightly)
-                ].spacing(5)
-            ].align_x(iced::Alignment::Center),
+                        .on_toggle(|checked| SettingsMessage::YtUseNightly(checked).into())
+                ].spacing(10),
+
+                row![
+                    Text::new("Download Folder"),
+                    TextInput::new("", instance.settings().download_folder()).width(350),
+                    Button::new(Text::new("Change").center())
+                        .width(100)
+                        .on_press(SettingsMessage::OpenFolderPicker.into())
+                ].spacing(10)
+            ].spacing(10).align_x(iced::Alignment::Center),
 
             // Video options
             column![
@@ -90,11 +141,15 @@ impl PomeloPage for SettingsPage {
                     Text::new("Auto-skip on error"),
 
                     Checkbox::new("", instance.settings().video_skip_on_error())
-                        .on_toggle(Msg::VideoSkipOnError)
-                ].spacing(5)
-            ],
+                        .on_toggle(|checked| SettingsMessage::VideoSkipOnError(checked).into()),
 
-            Button::new("Back").on_press(Msg::Back)
+                ].spacing(10)
+            ].spacing(10).align_x(iced::Alignment::Center),
+
+            Button::new(Text::new("Back").center())
+                .width(100)
+                .on_press(Msg::Back)
+
         ].spacing(25).align_x(iced::Alignment::Center).fill()
     }
 
@@ -134,4 +189,21 @@ fn tooltip_with_background <'a> (text: &'a str, tip: &'a str) -> iced::Element<'
         ).padding(10),
         Position::default()
     ).into()
+}
+
+fn open_folder_picker(path: &str) -> Task<Msg> {
+    use rfd::FileDialog;
+
+    let maybe_folder = FileDialog::new()
+        .set_directory(path)
+        .pick_folder();
+
+    if let Some(folder) = maybe_folder {
+        Task::done(
+            SettingsMessage::SetDownloadFolder(String::from(folder.to_str().unwrap().replace('\\', "/"))).into()
+        )
+    }
+    else {
+        Task::none()
+    }
 }
