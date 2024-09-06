@@ -208,7 +208,6 @@ impl VideoInfoPage {
 
     // Setup yt-dlp to download the video.
     fn download_video(&mut self, instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
-        use std::io::BufRead;
         use std::path::Path;
 
         let video = self.video.as_ref().unwrap();

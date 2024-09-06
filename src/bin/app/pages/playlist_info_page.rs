@@ -72,7 +72,7 @@ impl super::PomeloPage for PlaylistInfoPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::widget::{row, ProgressBar, Text, Button, Scrollable};
+        use iced::widget::{row, ProgressBar, Button, Scrollable};
         use super::{download_element, ConditionalMessage, FillElement};
         
         let mut column = Column::new().spacing(10).align_x(iced::Alignment::Center);
@@ -104,7 +104,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                             ).width(instance.settings().window_size().0 / 2.0).into(),
 
                             Button::new(Text::new("Cancel").center())
-                                .width(200)
+                                .width(100)
                                 .on_press(Msg::VideoDownloadCancelled.into())
                                 .into()
                         ]

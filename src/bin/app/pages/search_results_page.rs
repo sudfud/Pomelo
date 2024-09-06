@@ -132,7 +132,6 @@ impl super::PomeloPage for SearchResultsPage {
     }
 
     fn view(&self, instance: &PomeloInstance) -> Element<Msg> {
-        use iced::widget::{Button, Text};
         use super::ConditionalMessage;
 
         if let Some(result) = &self.search_results {
