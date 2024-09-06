@@ -118,8 +118,8 @@ impl super::PomeloPage for VideoInfoPage {
                                 .width(instance.settings().window_size().0 / 2.0)
                                 .into(),
         
-                            Button::new("Cancel")
-                                .width(200)
+                            Button::new(Text::new("Cancel").center())
+                                .width(100)
                                 .on_press(Msg::VideoDownloadCancelled.into())
                                 .into()
                         ]
