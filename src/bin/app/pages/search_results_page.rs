@@ -83,19 +83,6 @@ pub (crate) struct SearchResultsPage {
     continuation: HashMap<usize, String>
 }
 
-impl SearchResultsPage {
-    pub (crate) fn new(query: String, search_type: SearchType) -> Self {
-
-        Self {
-            query,
-            search_type,
-            search_results: None,
-            page_number: 1,
-            continuation: HashMap::new()
-        }
-    }
-}
-
 impl super::PomeloPage for SearchResultsPage {
     fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
         if let Msg::Back = message {
@@ -174,6 +161,16 @@ impl super::PomeloPage for SearchResultsPage {
 }
 
 impl SearchResultsPage {
+
+    pub (crate) fn new(query: String, search_type: SearchType) -> Self {
+        Self {
+            query,
+            search_type,
+            search_results: None,
+            page_number: 1,
+            continuation: HashMap::new()
+        }
+    }
 
     // Use Invidious to search for items from Youtube.
     fn start_search(&self, instance_index: usize) -> (Task<Msg>, Navigation) {

@@ -16,7 +16,7 @@ use super::{DownloadInfo, PomeloInstance, Navigation, Msg};
 #[derive(Debug, Clone)]
 pub (crate) enum VideoInfoMessage {
     LoadVideo(String),
-    VideoLoaded(Result<CommonVideo, PomeloError>),
+    VideoLoaded(Box<Result<CommonVideo, PomeloError>>),
     PlayVideo
 }
 
@@ -70,7 +70,7 @@ impl super::PomeloPage for VideoInfoPage {
                     => return load_video(id, instance.settings().invidious_index()),
 
                 VideoInfoMessage::VideoLoaded(result)
-                    => return self.on_video_loaded(result),
+                    => return self.on_video_loaded(*result),
 
                 VideoInfoMessage::PlayVideo
                     => return self.play_video()
@@ -120,7 +120,7 @@ impl super::PomeloPage for VideoInfoPage {
         
                             Button::new(Text::new("Cancel").center())
                                 .width(100)
-                                .on_press(Msg::VideoDownloadCancelled.into())
+                                .on_press(Msg::VideoDownloadCancelled)
                                 .into()
                         ]
                     );
@@ -253,7 +253,7 @@ impl VideoInfoPage {
         else {
             let q = self.selected_quality.num().to_string();
             v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
-            quality = format!("res:{}", self.selected_quality.num().to_string());
+            quality = format!("res:{}", self.selected_quality.num());
 
             args.extend([
                 "-S",
@@ -274,11 +274,11 @@ impl VideoInfoPage {
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
                 Task::done(
-                    Msg::NextVideoChunk(output, result.map_err(PomeloError::new)).into()
+                    Msg::NextVideoChunk(output, result.map_err(PomeloError::new))
                 )
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
         };
 
         (command, Navigation::None)
@@ -292,7 +292,7 @@ impl VideoInfoPage {
                 Task::done(
                     Msg::VideoDownloadComplete(
                         Err(PomeloError::from(String::from("Failed to retrieve next video chunk.")))
-                    ).into()
+                    )
                 ),
 
                 Navigation::None
@@ -301,7 +301,7 @@ impl VideoInfoPage {
 
         let command = match result {
             Ok(index) => match index {
-                0 => Task::done(Msg::VideoDownloadComplete(Ok(())).into()),
+                0 => Task::done(Msg::VideoDownloadComplete(Ok(()))),
                 _ => {
 
                     let nums: Vec<usize> = line
@@ -327,11 +327,11 @@ impl VideoInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(Msg::NextVideoChunk(output, result).into())
+                    Task::done(Msg::NextVideoChunk(output, result))
                 }
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
         };
 
         (command, Navigation::None)
@@ -378,7 +378,7 @@ fn load_video(id: String, instance_index: usize) -> (Task<Msg>, Navigation) {
                     .map(|video| video.into())
                     .map_err(PomeloError::new)
             },
-            |result| VideoInfoMessage::VideoLoaded(result).into()
+            |result| VideoInfoMessage::VideoLoaded(Box::new(result)).into()
         ),
         Navigation::None
     )
@@ -388,7 +388,7 @@ fn load_video(id: String, instance_index: usize) -> (Task<Msg>, Navigation) {
 fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
     instance.cancel_download();
     (
-        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
+        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")))),
         Navigation::None
     )
 }

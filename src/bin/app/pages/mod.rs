@@ -127,7 +127,7 @@ fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality
             "Format",
             DownloadFormat::ALL,
             format.clone(),
-            |fmt| Msg::SetDownloadFormat(fmt).into()
+            Msg::SetDownloadFormat
         )  
     );
 
@@ -136,14 +136,14 @@ fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality
             "Quality",
             DownloadQuality::ALL,
             quality.clone(),
-            |q| Msg::SetDownloadQuality(q).into()
+            Msg::SetDownloadQuality
         ).on_condition(!format.is_audio())
     );
 
     column![
         Button::new(Text::new("Download").center())
             .width(100)
-            .on_press(Msg::StartVideoDownload.into()),
+            .on_press(Msg::StartVideoDownload),
 
         row
 

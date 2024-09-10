@@ -45,6 +45,12 @@ impl From<SettingsMessage> for Msg {
 // Page that allows users to modify Pomelo settings.
 pub (crate) struct SettingsPage;
 
+impl SettingsPage {
+    pub (crate) fn new() -> Self {
+        Self {}
+    }
+}
+
 impl PomeloPage for SettingsPage {
     fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
 
@@ -200,7 +206,7 @@ fn open_folder_picker(path: &str) -> Task<Msg> {
 
     if let Some(folder) = maybe_folder {
         Task::done(
-            SettingsMessage::SetDownloadFolder(String::from(folder.to_str().unwrap().replace('\\', "/"))).into()
+            SettingsMessage::SetDownloadFolder(folder.to_str().unwrap().replace('\\', "/")).into()
         )
     }
     else {

@@ -48,10 +48,7 @@ impl DownloadFormat {
     const ALL: [Self; 4] = [Self::MP4, Self::WEBM, Self::MP3, Self::M4A];
 
     fn is_audio(&self) -> bool {
-        match self {
-            Self::MP3 | Self::M4A => true,
-            _ => false
-        }
+        matches!(self, Self::MP3 | Self::M4A)
     }
 
     fn as_ext(&self) -> &str {

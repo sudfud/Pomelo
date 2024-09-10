@@ -18,7 +18,7 @@ use super::VideoOrder;
 #[derive(Debug, Clone)]
 pub (crate) enum PlaylistInfoMessage {
     LoadPlaylist(String),
-    LoadComplete(Result<Playlist, PomeloError>),
+    LoadComplete(Box<Result<Playlist, PomeloError>>),
     ToVideo(VideoOrder)
 }
 
@@ -59,7 +59,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                     => return self.load_playlist(id, instance.settings().invidious_index()),
 
                 PlaylistInfoMessage::LoadComplete(result)
-                    => return self.on_load_complete(result, instance.cache()),
+                    => return self.on_load_complete(*result, instance.cache()),
 
                 PlaylistInfoMessage::ToVideo(order)
                     => return self.go_to_video(order),
@@ -105,7 +105,7 @@ impl super::PomeloPage for PlaylistInfoPage {
 
                             Button::new(Text::new("Cancel").center())
                                 .width(100)
-                                .on_press(Msg::VideoDownloadCancelled.into())
+                                .on_press(Msg::VideoDownloadCancelled)
                                 .into()
                         ]
                     );
@@ -180,7 +180,7 @@ impl PlaylistInfoPage {
                 async move {
                     downloader.get_playlist_videos(&id).await.map_err(PomeloError::new)
                 },
-                |result| PlaylistInfoMessage::LoadComplete(result).into()
+                |result| PlaylistInfoMessage::LoadComplete(Box::new(result)).into()
             ),
             Navigation::None
         )
@@ -270,7 +270,7 @@ impl PlaylistInfoPage {
         else {
             let q = self.selected_quality.num().to_string();
             v_filter = format!("b[height={}]/bv[height={}]+ba", ext, q);
-            quality = format!("res:{}", self.selected_quality.num().to_string());
+            quality = format!("res:{}", self.selected_quality.num());
 
             args.extend([
                 "-S",
@@ -290,10 +290,10 @@ impl PlaylistInfoPage {
                 self.downloading = true;
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
-                Task::done(Msg::NextVideoChunk(output, result.map_err(PomeloError::new)).into())
+                Task::done(Msg::NextVideoChunk(output, result.map_err(PomeloError::new)))
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
         };
 
         (command, Navigation::None)
@@ -303,7 +303,7 @@ impl PlaylistInfoPage {
     fn on_next_chunk(&mut self, output: String, result: Result<usize, PomeloError>) -> (Task<Msg>, Navigation) {
         let command = match result {
             Ok(index) => match index {
-                0 => Task::done(Msg::VideoDownloadComplete(Ok(())).into()),
+                0 => Task::done(Msg::VideoDownloadComplete(Ok(()))),
                 _ => {
 
                     let info = self.download_info.as_mut().unwrap();
@@ -332,11 +332,11 @@ impl PlaylistInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(Msg::NextVideoChunk(output, result).into())
+                    Task::done(Msg::NextVideoChunk(output, result))
                 }
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)).into())
+            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
         };
 
         (command, Navigation::None)
@@ -402,7 +402,7 @@ fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigatio
     instance.cancel_download();
 
     (
-        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user."))).into()),
+        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")))),
         Navigation::None
     )
 }

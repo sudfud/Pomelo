@@ -8,8 +8,6 @@ use super::PomeloError;
 use self::settings::PomeloSettings;
 use self::cache::PomeloCache;
 
-
-
 // Readers for the yt-dlp process' stdout and stderr
 type DownloadReader = (
     std::io::BufReader<std::process::ChildStdout>,

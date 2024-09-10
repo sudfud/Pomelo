@@ -241,7 +241,11 @@ impl VideoPlayerPage {
                 if from_computer {
                     Url::parse(&video)
                         .map(|url| (url, false))
-                        .map_err(PomeloError::new)
+                        .map_err(|e| {
+                                eprintln!("{}", e);
+                                PomeloError::new(e)
+                            }
+                        )
                 } 
                 else {
                     let downloader = VideoFetcher::new(invid_index);

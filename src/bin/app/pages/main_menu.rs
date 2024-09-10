@@ -1,5 +1,7 @@
 use iced::Task;
 
+use crate::app::pages::local_video_page::LocalVideoPage;
+
 use super::{Navigation, PomeloPage, PomeloInstance, Msg};
 
 // Main menu, the first page that's loaded when the program starts.
@@ -8,9 +10,9 @@ pub (crate) struct MainMenu;
 
 #[derive(Debug, Clone)]
 pub (crate) enum MainMenuMessage {
-    LocalVideoPage,
-    SearchPage,
-    SettingsPage
+    LocalVideo,
+    Search,
+    Settings
 }
 
 impl From<MainMenuMessage> for Msg {
@@ -27,15 +29,9 @@ impl PomeloPage for MainMenu {
 
         if let Msg::MainMenu(msg) = message {
             match msg {
-                MainMenuMessage::LocalVideoPage => return to_local_video_page(),
-                MainMenuMessage::SearchPage => return (
-                    Task::none(),
-                    Navigation::GoTo(Box::new(SearchPage::new()))
-                ),
-                MainMenuMessage::SettingsPage => return (
-                    Task::none(),
-                    Navigation::GoTo(Box::new(SettingsPage {}))
-                )
+                MainMenuMessage::LocalVideo => return go_to_page(LocalVideoPage::new()),
+                MainMenuMessage::Search => return go_to_page(SearchPage::new()),
+                MainMenuMessage::Settings => return go_to_page(SettingsPage::new())
             }
         }
         (Task::none(), Navigation::None)
@@ -49,15 +45,15 @@ impl PomeloPage for MainMenu {
         iced::widget::column![
             Button::new(Text::new("Play from Computer").center())
                 .width(200)
-                .on_press(MainMenuMessage::LocalVideoPage.into()),
+                .on_press(MainMenuMessage::LocalVideo.into()),
 
             Button::new(Text::new("Play from Youtube").center())
                 .width(200)
-                .on_press(MainMenuMessage::SearchPage.into()),
+                .on_press(MainMenuMessage::Search.into()),
 
             Button::new(Text::new("Settings").center())
                 .width(200)
-                .on_press(MainMenuMessage::SettingsPage.into())
+                .on_press(MainMenuMessage::Settings.into())
         ].spacing(25).fill()
     }
 
@@ -66,11 +62,6 @@ impl PomeloPage for MainMenu {
     }
 }
 
-fn to_local_video_page() -> (Task<Msg>, Navigation) {
-    use super::local_video_page::LocalVideoPage;
-
-    (
-        Task::none(),
-        Navigation::GoTo(Box::new(LocalVideoPage::new()))
-    )
+fn go_to_page(page: impl PomeloPage + 'static) -> (Task<Msg>, Navigation) {
+    (Task::none(), Navigation::GoTo(Box::new(page)))
 }
