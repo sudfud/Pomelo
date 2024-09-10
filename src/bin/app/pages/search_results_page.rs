@@ -41,8 +41,7 @@ impl YoutubeInfo for SearchResult {
             Self::Channel(ch) => vec![
                 ch.name.clone(),
                 ch.description.clone(),
-                format!("{} Subscribers", ch.subscribers),
-                format!("{} Videos", ch.video_count)
+                format!("{} Subscribers", ch.subscribers)
             ],
             Self::Playlist(p) => vec![
                 p.title.clone(),
