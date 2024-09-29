@@ -14,7 +14,7 @@ Pomelo is a desktop media player with Youtube search, playback, and download fun
 ## Known issues
 - Searching and downloading might stop working, usually due to Youtube API changes. If this happens, try changing the Invidious and/or Yt-dlp settings.
 
-- Downloads may be separated into 2 files for audio and video. This can usually be fixed by enabling the nightly build of yt-dlp.
+- Downloaded videos seem to have seeking issues on Linux.
 
 ## Installation
 
