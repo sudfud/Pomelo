@@ -377,6 +377,7 @@ impl VideoPlayerPage {
     // Track the video's current position while it's playing.
     fn on_next_frame(&mut self) {
         if let Some(Ok(video)) = self.current_video.as_mut() {
+            //println!("{}, {}", video.paused(), video.position().as_secs_f64());
             if !self.seeking {
                 self.video_position = video.position().as_secs_f64();
             }

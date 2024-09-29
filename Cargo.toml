@@ -15,7 +15,7 @@ bytes = "1.6.0"
 chrono = "0.4.38"
 filenamify = "0.1.1"
 futures = "0.3.30"
-iced = {git = "https://github.com/iced-rs/iced.git", features = ["advanced", "tokio", "image"]}
+iced = {version = "0.13.1", features = ["advanced", "tokio", "image", "wgpu"]}
 iced_video_player = {git = "https://github.com/sudfud/iced_video_player.git"}
 invidious = {version = "0.7.4", features = ["reqwest_async"]}
 log = "0.4.22"

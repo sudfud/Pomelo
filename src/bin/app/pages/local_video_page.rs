@@ -113,7 +113,7 @@ impl LocalVideoPage {
         use rfd::FileDialog;
 
         let maybe_files = FileDialog::new()
-            .add_filter("video", &["mp4"])
+            .add_filter("video", &["mp4", "webm"])
             .set_directory(".")
             .pick_files();
 
