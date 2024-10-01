@@ -2,6 +2,32 @@ use log::error;
 
 use super::PomeloError;
 
+// List of instances to use for Invidious.
+// Only instances from the official Invidious docs are used.
+pub (crate) const INVID_INSTANCES: &[(&str, &str)] = &[
+    ("https://invidious.darkness.services", "USA"),
+    ("https://invidious.incogniweb.net", "USA"),
+    ("https://inv.in.projectsegfau.lt", "India"),
+    ("https://invidious.materialio.us", "New Zealand"),
+    ("https://invidious.reallyaweso.me", "Germany"),
+    ("https://invidious.privacyredirect.com", "Finland"),
+    ("https://invidious.jing.rocks", "Japan"),
+    ("https://inv.us.projectsegfau.lt", "USA"),
+    ("https://invidious.drgns.space", "USA"),
+    ("https://invidious.fdn.fr", "France"),
+    ("https://iv.datura.network", "Finland"),
+    ("https://yt.drgnz.club", "Czech Republic"),
+    ("https://invidious.private.coffee", "Austria"),
+    ("https://invidious.protokolla.fi", "Finland"),
+    ("https://inv.tux.pizza", "USA"),
+    ("https://inv.nadeko.net", "Chile"),
+    ("https://iv.melmac.space", "Germany"),
+    ("https://invidious.privacydev.net", "France"),
+    ("https://invidious.flokinet.to", "Romania"),
+    ("https://yt.artemislena.eu", "Germany"),
+    ("https://yewtu.be", "Germany")
+];
+
 // Settings that can be changed, directly or indirectly, by the user. These settings are persistant between runs.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub (crate) struct PomeloSettings {
@@ -15,13 +41,16 @@ pub (crate) struct PomeloSettings {
 impl PomeloSettings {
     // Create with default settings.
     pub (crate) fn new() -> Self {
-        Self {
-            window_size: (500.0, 500.0),
-            invidious_index: 0,
-            yt_dlp_use_nightly: false,
-            yt_dlp_download_folder: String::from("./downloads"),
-            video_skip_on_error: false
-        }   
+        match Self::load() {
+            Ok(settings) => settings,
+            Err(_) => Self {
+                window_size: (500.0, 500.0),
+                invidious_index: 0,
+                yt_dlp_use_nightly: false,
+                yt_dlp_download_folder: String::from("./downloads"),
+                video_skip_on_error: false
+            }   
+        }
     }
 
     pub (crate) fn window_size(&self) -> (f32, f32) {
@@ -34,6 +63,14 @@ impl PomeloSettings {
 
     pub (crate) fn invidious_index(&self) -> usize {
         self.invidious_index
+    }
+
+    pub (crate) fn invidious_url(&self) -> &str {
+        INVID_INSTANCES[self.invidious_index].0
+    }
+
+    pub (crate) fn invidious_country(&self) -> &str {
+        INVID_INSTANCES[self.invidious_index].1
     }
 
     pub (crate) fn set_invidious_index(&mut self, index: usize) {

@@ -1,8 +1,6 @@
 use iced::Task;
 
-use crate::yt_fetch::SearchType;
-
-use super::{PomeloInstance, PomeloPage, Navigation, Msg};
+use super::{PomeloInstance, PomeloPage, Navigation, Msg, yt_fetch::SearchType};
 
 #[derive(Debug, Clone)]
 pub (crate) enum SearchMessage {

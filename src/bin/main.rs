@@ -4,35 +4,6 @@
 
 mod app;
 mod utils;
-mod yt_fetch;
-
-//mod iced_video_player;
-
-// List of instances to use for Invidious.
-// Only instances from the official Invidious docs are used.
-const INVID_INSTANCES: &[(&str, &str)] = &[
-    ("https://invidious.darkness.services", "USA"),
-    ("https://invidious.incogniweb.net", "USA"),
-    ("https://inv.in.projectsegfau.lt", "India"),
-    ("https://invidious.materialio.us", "New Zealand"),
-    ("https://invidious.reallyaweso.me", "Germany"),
-    ("https://invidious.privacyredirect.com", "Finland"),
-    ("https://invidious.jing.rocks", "Japan"),
-    ("https://inv.us.projectsegfau.lt", "USA"),
-    ("https://invidious.drgns.space", "USA"),
-    ("https://invidious.fdn.fr", "France"),
-    ("https://iv.datura.network", "Finland"),
-    ("https://yt.drgnz.club", "Czech Republic"),
-    ("https://invidious.private.coffee", "Austria"),
-    ("https://invidious.protokolla.fi", "Finland"),
-    ("https://inv.tux.pizza", "USA"),
-    ("https://inv.nadeko.net", "Chile"),
-    ("https://iv.melmac.space", "Germany"),
-    ("https://invidious.privacydev.net", "France"),
-    ("https://invidious.flokinet.to", "Romania"),
-    ("https://yt.artemislena.eu", "Germany"),
-    ("https://yewtu.be", "Germany")
-];
 
 fn main() {
     use std::path::Path;

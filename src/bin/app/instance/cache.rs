@@ -23,8 +23,8 @@ impl PomeloCache {
         self.thumbnails.contains_key(id)
     }
 
-    pub (crate) fn get_thumbnail(&self, id: &str) -> Option<Handle> {
-        self.thumbnails.get(id).cloned()
+    pub (crate) fn get_thumbnail(&self, id: &str) -> Option<&Handle> {
+        self.thumbnails.get(id)
     }
 
     pub (crate) fn add_thumbnail(&mut self, id: String, handle: Handle) {

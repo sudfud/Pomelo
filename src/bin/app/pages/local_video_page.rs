@@ -32,7 +32,7 @@ impl super::PomeloPage for LocalVideoPage {
             match msg {
                 LocalVideoMessage::OpenFilePicker => return self.open_file_picker(),
                 LocalVideoMessage::PlayVideos(order) => return self.play_videos(order),
-                LocalVideoMessage::ClearVideos => self.clear_videos()
+                LocalVideoMessage::ClearVideos => self.videos.clear()
             }
         }
 
@@ -142,9 +142,5 @@ impl LocalVideoPage {
             Task::done(VideoPlayerMessage::LoadVideo(index).into()),
             Navigation::GoTo(Box::new(VideoPlayerPage::new(vids, order)))
         )
-    }
-
-    fn clear_videos(&mut self) {
-        self.videos.clear();
     }
 }

@@ -10,7 +10,6 @@ use log::{info, error};
 
 use crate::app::instance::cache::PomeloCache;
 use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
-use crate::INVID_INSTANCES;
 
 use super::{PomeloInstance, DownloadInfo, Msg, Navigation};
 use super::VideoOrder;
@@ -56,7 +55,7 @@ impl super::PomeloPage for PlaylistInfoPage {
 
             Msg::PlaylistInfo(msg) => match msg {
                 PlaylistInfoMessage::LoadPlaylist(id) 
-                    => return self.load_playlist(id, instance.settings().invidious_index()),
+                    => return self.load_playlist(id, instance.settings().invidious_url()),
 
                 PlaylistInfoMessage::LoadComplete(result)
                     => return self.on_load_complete(*result, instance.cache()),
@@ -169,12 +168,12 @@ impl PlaylistInfoPage {
     }
 
     // Get info for the playlist with the given id from Indivious
-    fn load_playlist(&self, id: String, instance_index: usize) -> (Task<Msg>, Navigation) {
-        use crate::yt_fetch::VideoFetcher;
+    fn load_playlist(&self, id: String, url: &str) -> (Task<Msg>, Navigation) {
+        use super::yt_fetch::VideoFetcher;
 
         info!("Loading playlist info from id: {}", id);
-
-        let downloader = VideoFetcher::new(String::from(INVID_INSTANCES[instance_index].0));
+        
+        let downloader = VideoFetcher::new(url);
         (
             Task::perform(
                 async move {
@@ -188,7 +187,7 @@ impl PlaylistInfoPage {
 
     // Handles the result from loading playlist info. Starts loading thumbnails if it was successful.
     fn on_load_complete(&mut self, result: Result<Playlist, PomeloError>, cache: &PomeloCache) -> (Task<Msg>, Navigation) {
-        use crate::yt_fetch::SearchResults;
+        use super::yt_fetch::SearchResults;
 
         let command = match result {
             Ok(playlist) => {

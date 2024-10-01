@@ -151,9 +151,12 @@ pub struct VideoFetcher {
 }
 
 impl VideoFetcher {
-    pub fn new(instance: String) -> Self {
-        let client = ClientAsync::new(instance, MethodAsync::Reqwest);
-        Self { client }    
+    pub fn new(instance: impl Into<String>) -> Self {
+        Self { client: ClientAsync::new(instance.into(), MethodAsync::Reqwest) }
+    }
+
+    pub fn set_instance(&mut self, instance: &str) {
+        self.client.set_instance(String::from(instance));
     }
 
     // Get information about a Youtube video with the given id.

@@ -11,7 +11,6 @@ use log::{info, error};
 use iced::Task;
 
 use crate::app::pages::ConditionalElement;
-use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
 use iced_video_player::Video;
 
@@ -67,7 +66,7 @@ impl super::PomeloPage for VideoPlayerPage {
         else if let Msg::VideoPlayer(msg) = message {
             match msg {
                 VideoPlayerMessage::LoadVideo(index) => return (
-                    self.load_video(index, instance),
+                    self.load_video(index, instance.settings().invidious_url()),
                     Navigation::None
                 ),
 
@@ -227,14 +226,13 @@ impl super::PomeloPage for VideoPlayerPage {
 impl VideoPlayerPage {
 
     // Start loading the current video for playback.
-    fn load_video(&self, video_index: usize, instance: &PomeloInstance) -> Task<Msg> {
-        use crate::yt_fetch::VideoFetcher;
+    fn load_video(&self, video_index: usize, invid_url: &str) -> Task<Msg> {
+        use super::yt_fetch::VideoFetcher;
 
         let (video, from_computer) = self.videos[video_index].clone();
+        let url = String::from(invid_url);
 
         info!("Loading video for playback: {}", video);
-
-        let invid_index = String::from(INVID_INSTANCES[instance.settings().invidious_index()].0);
 
         Task::perform(
             async move {
@@ -248,8 +246,7 @@ impl VideoPlayerPage {
                         )
                 } 
                 else {
-                    let downloader = VideoFetcher::new(invid_index);
-                    
+                    let downloader = VideoFetcher::new(url);
                     match downloader.get_video_details(&video).await {
                         Ok(r) => Url::parse(&r.format_streams[0].url)
                             .map(|url| (url, r.live))

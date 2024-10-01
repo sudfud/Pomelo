@@ -5,8 +5,8 @@ use log::{info, warn, error};
 
 use super::PomeloError;
 
-use self::settings::PomeloSettings;
-use self::cache::PomeloCache;
+use settings::PomeloSettings;
+use cache::PomeloCache;
 
 // Readers for the yt-dlp process' stdout and stderr
 type DownloadReader = (

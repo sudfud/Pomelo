@@ -6,13 +6,11 @@ use iced::widget::image::Handle;
 use invidious::CommonVideo;
 use log::{info, error};
 
-
-use crate::INVID_INSTANCES;
 use crate::app::PomeloError;
 use crate::app::instance::cache::PomeloCache;
-use crate::yt_fetch::{SearchResult, SearchResults, SearchType, VideoFetcher};
 
 use super::{FillElement, PomeloInstance, Navigation, Msg};
+use super::yt_fetch::{SearchResult, SearchResults, SearchType, VideoFetcher};
 
 // Convenience trait for grabbing info about a search item.
 // Playlist videos are handled on a separate page, so they're listed as unreachable here.
@@ -95,7 +93,7 @@ impl super::PomeloPage for SearchResultsPage {
         else if let Msg::SearchResults(msg) = message {
             match msg {
                 SearchResultsMessage::StartSearch 
-                    => return self.start_search(instance.settings().invidious_index()),
+                    => return self.start_search(instance.settings().invidious_url()),
 
                 SearchResultsMessage::SearchComplete(result) 
                     => return self.on_search_complete(result, instance.cache()),
@@ -172,19 +170,17 @@ impl SearchResultsPage {
     }
 
     // Use Invidious to search for items from Youtube.
-    fn start_search(&self, instance_index: usize) -> (Task<Msg>, Navigation) {
+    fn start_search(&self, invid_url: &str) -> (Task<Msg>, Navigation) {
         let query = self.query.clone();
         let search_type = self.search_type;
         let page_number = self.page_number;
         let continuation = self.continuation.get(&self.page_number).cloned();
-        let instance = String::from(INVID_INSTANCES[instance_index].0);
 
         info!("Starting Youtube search. Type: {}, Page: {}, Query: {}", search_type, page_number, query);
-        
+        let downloader = VideoFetcher::new(invid_url);
         (
             Task::perform(
                 async move {
-                    let downloader = VideoFetcher::new(instance);
 
                     if let SearchType::ChannelUploads = search_type {
                         println!("{:?}", continuation);

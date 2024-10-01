@@ -13,8 +13,9 @@ use std::process::{ChildStderr, ChildStdout};
 use iced::{Element, Length, Subscription, Task};
 
 use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
-use crate::yt_fetch::{SearchResult, SearchResults};
+// use crate::yt_fetch::{SearchResult, SearchResults};
 
+use super::yt_fetch;
 use super::instance::cache::PomeloCache;
 use super::instance::PomeloInstance;
 
@@ -67,6 +68,8 @@ impl <'a, T> FillElement<'a, T> for T where T: Into<Element<'a, Msg>> {
     }
 }
 
+
+// Convenience trait for optional UI elements
 trait ConditionalElement<'a> {
     fn on_condition(self, condition: bool) -> Option<Element<'a, Msg>> where Self: Into<Element<'a, Msg>> {
         if condition {
@@ -166,8 +169,8 @@ fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: i
 }
 
 // Load thumbnails asyncronously
-fn batch_thumbnail_commands(search: &SearchResults, cache: &PomeloCache) -> Task<Msg> {
-    use crate::yt_fetch::download_thumbnail;
+fn batch_thumbnail_commands(search: &yt_fetch::SearchResults, cache: &PomeloCache) -> Task<Msg> {
+    use yt_fetch::{SearchResult, download_thumbnail};
 
     let mut commands: Vec<Task<Msg>> = Vec::new();
     

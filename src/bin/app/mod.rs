@@ -1,5 +1,6 @@
 mod pages;
 mod instance;
+mod yt_fetch;
 
 use iced::window;
 use iced::{Size, Task};

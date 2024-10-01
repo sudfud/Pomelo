@@ -7,9 +7,7 @@ use invidious::CommonVideo;
 
 use log::{info, error};
 
-use crate::INVID_INSTANCES;
 use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
-use crate::yt_fetch::VideoFetcher;
 
 use super::{DownloadInfo, PomeloInstance, Navigation, Msg};
 
@@ -67,7 +65,7 @@ impl super::PomeloPage for VideoInfoPage {
 
             Msg::VideoInfo(msg) => match msg {
                 VideoInfoMessage::LoadVideo(id) 
-                    => return load_video(id, instance.settings().invidious_index()),
+                    => return load_video(id, instance.settings().invidious_url()),
 
                 VideoInfoMessage::VideoLoaded(result)
                     => return self.on_video_loaded(*result),
@@ -94,7 +92,7 @@ impl super::PomeloPage for VideoInfoPage {
                 .align_x(iced::Alignment::Center);
     
                 if let Some(handle) = instance.cache().get_thumbnail(&video.id) {
-                    column = column.push(Image::new(handle.clone()));
+                    column = column.push(Image::new(handle));
                 }
         
                 column = column.push(
@@ -164,7 +162,7 @@ impl super::PomeloPage for VideoInfoPage {
 impl VideoInfoPage {
     // Video finished loading, or an error occured.
     fn on_video_loaded(&mut self, result: Result<CommonVideo, PomeloError>) -> (Task<Msg>, Navigation) {
-        use crate::yt_fetch::{SearchResult, download_thumbnail};
+        use super::yt_fetch::{SearchResult, download_thumbnail};
 
         let command = match result {
             Ok(video) => {
@@ -364,15 +362,16 @@ impl VideoInfoPage {
 }
 
 // Use Invidious to load video info from Youtube.
-fn load_video(id: String, instance_index: usize) -> (Task<Msg>, Navigation) {
+fn load_video(id: String, invid_url: &str) -> (Task<Msg>, Navigation) {
+    use super::yt_fetch::VideoFetcher;
+
     info!("Loading video info with id: {}", id);
 
-    let instance = String::from(INVID_INSTANCES[instance_index].0);
+    let downloader = VideoFetcher::new(invid_url);
+    
     (
         Task::perform(
             async move {
-                let downloader = VideoFetcher::new(instance);
-
                 downloader.get_video_details(&id)
                     .await
                     .map(|video| video.into())

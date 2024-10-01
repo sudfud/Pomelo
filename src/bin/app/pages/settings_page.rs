@@ -3,8 +3,8 @@ use std::fmt::Display;
 use iced::Task;
 use iced::widget::Text;
 
-use crate::INVID_INSTANCES;
 use crate::app::PomeloInstance;
+use crate::app::instance::settings::INVID_INSTANCES;
 
 use super::{PomeloPage, Navigation, Msg};
 
