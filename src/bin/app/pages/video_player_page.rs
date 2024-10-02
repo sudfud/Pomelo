@@ -11,10 +11,10 @@ use log::{info, error};
 use iced::Task;
 
 use crate::app::pages::ConditionalElement;
-use crate::app::PomeloError;
+use crate::app::{PomeloError, PomeloMessage, PomeloCommand};
 use iced_video_player::Video;
 
-use super::{FillElement, PomeloInstance, Navigation, Msg};
+use super::{FillElement, PomeloInstance, Navigation};
 
 #[derive(Debug, Clone)]
 pub (crate) enum VideoPlayerMessage {
@@ -29,7 +29,7 @@ pub (crate) enum VideoPlayerMessage {
     SkipTimer(u8, usize)
 }
 
-impl From<VideoPlayerMessage> for Msg {
+impl From<VideoPlayerMessage> for PomeloMessage {
     fn from(value: VideoPlayerMessage) -> Self {
         Self::VideoPlayer(value)
     }
@@ -53,39 +53,30 @@ pub (crate) struct VideoPlayerPage {
 
 impl super::PomeloPage for VideoPlayerPage {
 
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
 
-        if let Msg::Back = message {
+        if let PomeloMessage::Back = message {
             if let Some(timer) = self.skip_timer.take() {
                 timer.abort();
             }
 
-            return (Task::none(), Navigation::Back);
+            return PomeloCommand::back();
         }
 
-        else if let Msg::VideoPlayer(msg) = message {
+        else if let PomeloMessage::VideoPlayer(msg) = message {
             match msg {
-                VideoPlayerMessage::LoadVideo(index) => return (
-                    self.load_video(index, instance.settings().invidious_url()),
-                    Navigation::None
-                ),
+                VideoPlayerMessage::LoadVideo(index) 
+                    => return self.load_video(index, instance.settings().invidious_url()),
 
-                VideoPlayerMessage::LoadComplete(index, result) => return (
-                    self.on_load_complete(index, result, instance.settings().video_skip_on_error()),
-                    Navigation::None
-                ),
+                VideoPlayerMessage::LoadComplete(index, result) 
+                    => return self.on_load_complete(index, result, instance.settings().video_skip_on_error()),
 
                 // Video control messages
-                VideoPlayerMessage::NextVideo(index) => return (
-                    self.next_video(index),
-                    Navigation::None
-                ),
+                VideoPlayerMessage::NextVideo(index) 
+                    => return self.next_video(index),
 
-                
-                VideoPlayerMessage::SkipTimer(time, index) => return (
-                    self.skip_timer_update(time, index),
-                    Navigation::None
-                ),
+                VideoPlayerMessage::SkipTimer(time, index) 
+                    => return self.skip_timer_update(time, index),
 
                 VideoPlayerMessage::PlayToggle => self.toggle_playback(),
                 VideoPlayerMessage::VolumeUpdate(f) => self.set_volume(f),
@@ -95,10 +86,10 @@ impl super::PomeloPage for VideoPlayerPage {
             }
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn view(&self, _instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, _instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use crate::utils;
         use iced::widget::{row, Row, Column, Text, Slider, Button};
         use iced_video_player::VideoPlayer;
@@ -106,7 +97,7 @@ impl super::PomeloPage for VideoPlayerPage {
 
         if let Some(result) = &self.current_video {
 
-            let mut column: Column<Msg> = Column::new()
+            let mut column: Column<PomeloMessage> = Column::new()
                 .spacing(10)
                 .align_x(iced::Alignment::Center);
 
@@ -182,7 +173,7 @@ impl super::PomeloPage for VideoPlayerPage {
                 }
             }
 
-            let mut buttons = Row::<Msg>::new().spacing(25);
+            let mut buttons = Row::<PomeloMessage>::new().spacing(25);
 
             buttons = buttons.push_maybe(
                 Button::new(Text::new("Prev").center())
@@ -196,7 +187,7 @@ impl super::PomeloPage for VideoPlayerPage {
             buttons = buttons.push(
                 Button::new(Text::new("Back").center())
                     .width(100)
-                    .on_press(Msg::Back)
+                    .on_press(PomeloMessage::Back)
             );
 
             buttons = buttons.push_maybe(
@@ -218,7 +209,7 @@ impl super::PomeloPage for VideoPlayerPage {
         }
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
@@ -226,7 +217,7 @@ impl super::PomeloPage for VideoPlayerPage {
 impl VideoPlayerPage {
 
     // Start loading the current video for playback.
-    fn load_video(&self, video_index: usize, invid_url: &str) -> Task<Msg> {
+    fn load_video(&self, video_index: usize, invid_url: &str) -> PomeloCommand {
         use super::yt_fetch::VideoFetcher;
 
         let (video, from_computer) = self.videos[video_index].clone();
@@ -234,34 +225,36 @@ impl VideoPlayerPage {
 
         info!("Loading video for playback: {}", video);
 
-        Task::perform(
-            async move {
-                if from_computer {
-                    Url::parse(&video)
-                        .map(|url| (url, false))
-                        .map_err(|e| {
-                                eprintln!("{}", e);
-                                PomeloError::new(e)
-                            }
-                        )
-                } 
-                else {
-                    let downloader = VideoFetcher::new(url);
-                    match downloader.get_video_details(&video).await {
-                        Ok(r) => Url::parse(&r.format_streams[0].url)
-                            .map(|url| (url, r.live))
-                            .map_err(PomeloError::new),
+        PomeloCommand::task_only(
+            Task::perform(
+                async move {
+                    if from_computer {
+                        Url::parse(&video)
+                            .map(|url| (url, false))
+                            .map_err(|e| {
+                                    eprintln!("{}", e);
+                                    PomeloError::new(e)
+                                }
+                            )
+                    } 
+                    else {
+                        let downloader = VideoFetcher::new(url);
+                        match downloader.get_video_details(&video).await {
+                            Ok(r) => Url::parse(&r.format_streams[0].url)
+                                .map(|url| (url, r.live))
+                                .map_err(PomeloError::new),
 
-                        Err(e) => Err(PomeloError::new(e))
+                            Err(e) => Err(PomeloError::new(e))
+                        }
                     }
-                }
-            },
-            move |result| VideoPlayerMessage::LoadComplete(video_index, result).into()
+                },
+                move |result| VideoPlayerMessage::LoadComplete(video_index, result).into()
+            )
         )
     }
 
     // Video finished loading, start playing if there were no errors.
-    fn on_load_complete(&mut self, video_index: usize, result: Result<(Url, bool), PomeloError>, skip_on_error: bool) -> Task<Msg> {
+    fn on_load_complete(&mut self, video_index: usize, result: Result<(Url, bool), PomeloError>, skip_on_error: bool) -> PomeloCommand {
         let mut maybe_video = match result {
             Ok((url, live)) => Video::new(&url, live).map_err(PomeloError::new),
             Err(e) => {
@@ -310,11 +303,11 @@ impl VideoPlayerPage {
 
         self.current_video = Some(maybe_video);
 
-        task
+        PomeloCommand::task_only(task)
     }
 
     // Start loading the next video in the list.
-    fn next_video(&mut self, index: usize) -> Task<Msg> {
+    fn next_video(&mut self, index: usize) -> PomeloCommand {
 
         if let Some(handle) = self.skip_timer.take() {
             handle.abort();
@@ -326,10 +319,10 @@ impl VideoPlayerPage {
             self.current_video = None;
             //self.video_index = Wrapping(index);
 
-            Task::done(VideoPlayerMessage::LoadVideo(index).into())
+            PomeloCommand::message(VideoPlayerMessage::LoadVideo(index))
         }
         else {
-            Task::none()
+            PomeloCommand::none()
         }
     }
 
@@ -381,20 +374,21 @@ impl VideoPlayerPage {
         }
     }
 
-    fn skip_timer_update(&mut self, time: u8, index: usize) -> Task<Msg> {
+    fn skip_timer_update(&mut self, time: u8, index: usize) -> PomeloCommand {
         self.skip_time = time;
 
         if time == 0 {
             self.auto_skipping = false;
-            Task::done(VideoPlayerMessage::NextVideo(index).into())
+            PomeloCommand::message(VideoPlayerMessage::NextVideo(index))
         }
         else {
-
-            Task::perform(
-                async {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                },
-                move |_| VideoPlayerMessage::SkipTimer(time - 1, index).into()
+            PomeloCommand::task_only(
+                Task::perform(
+                    async {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    },
+                    move |_| VideoPlayerMessage::SkipTimer(time - 1, index).into()
+                )
             )
         }
     }

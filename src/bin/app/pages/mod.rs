@@ -15,6 +15,8 @@ use iced::{Element, Length, Subscription, Task};
 use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
 // use crate::yt_fetch::{SearchResult, SearchResults};
 
+use super::PomeloMessage;
+use super::PomeloCommand;
 use super::yt_fetch;
 use super::instance::cache::PomeloCache;
 use super::instance::PomeloInstance;
@@ -29,8 +31,6 @@ pub (crate) use self::{
     video_player_page::VideoPlayerMessage,
     settings_page::SettingsMessage
 };
-
-type Msg = crate::app::PomeloMessage;
 
 // Companion to Messages, used to redirect to different pages.
 pub (crate) enum Navigation {
@@ -50,18 +50,18 @@ pub (crate) enum VideoOrder {
 
 // Allows pages to interact with the Iced update/render loops
 pub (crate) trait PomeloPage {
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation);
-    fn view(&self, instance: &PomeloInstance) -> Element<Msg>;
-    fn subscription(&self, instance: &PomeloInstance) -> Subscription<Msg>;
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand;
+    fn view(&self, instance: &PomeloInstance) -> Element<PomeloMessage>;
+    fn subscription(&self, instance: &PomeloInstance) -> Subscription<PomeloMessage>;
 }
 
 // Convenience trait for expanding UI elements to fit the whole screen.
 trait FillElement<'a, T> {
-    fn fill(self) -> Element<'a, Msg>;
+    fn fill(self) -> Element<'a, PomeloMessage>;
 }
 
-impl <'a, T> FillElement<'a, T> for T where T: Into<Element<'a, Msg>> {
-    fn fill(self) -> Element<'a, Msg> {
+impl <'a, T> FillElement<'a, T> for T where T: Into<Element<'a, PomeloMessage>> {
+    fn fill(self) -> Element<'a, PomeloMessage> {
         iced::widget::Container::new(self)
             .center(Length::Fill)
             .into()
@@ -71,7 +71,7 @@ impl <'a, T> FillElement<'a, T> for T where T: Into<Element<'a, Msg>> {
 
 // Convenience trait for optional UI elements
 trait ConditionalElement<'a> {
-    fn on_condition(self, condition: bool) -> Option<Element<'a, Msg>> where Self: Into<Element<'a, Msg>> {
+    fn on_condition(self, condition: bool) -> Option<Element<'a, PomeloMessage>> where Self: Into<Element<'a, PomeloMessage>> {
         if condition {
             Some(self.into())
         }
@@ -81,12 +81,12 @@ trait ConditionalElement<'a> {
     }
 }
 
-impl <'a> ConditionalElement<'a> for iced::widget::Button<'a, Msg> {}
-impl <'a> ConditionalElement<'a> for iced::Element<'a, Msg> {}
+impl <'a> ConditionalElement<'a> for iced::widget::Button<'a, PomeloMessage> {}
+impl <'a> ConditionalElement<'a> for iced::Element<'a, PomeloMessage> {}
 
 // Convenience trait for optional messages
 trait ConditionalMessage {
-    fn on_condition(self, condition: bool) -> Option<Msg> where Self: Into<Msg> {
+    fn on_condition(self, condition: bool) -> Option<PomeloMessage> where Self: Into<PomeloMessage> {
         if condition {
             Some(self.into())
         }
@@ -96,7 +96,7 @@ trait ConditionalMessage {
     }
 }
 
-impl ConditionalMessage for Msg {}
+impl ConditionalMessage for PomeloMessage {}
 
 // Collection of information and readers for a video/playlist download.
 // Might want to move up to app module later, and make this a part of PomeloInstance
@@ -120,7 +120,16 @@ impl DownloadInfo {
     }
 }
 
-fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality) -> iced::Element<'a, Msg> {
+fn simple_button(text: &str, width: impl Into<iced::Length>, message: impl Into<PomeloMessage>) -> Element<PomeloMessage> {
+    use iced::widget::{Button, Text};
+
+    Button::new(Text::new(text).center())
+        .width(width)
+        .on_press(message.into())
+        .into()
+}
+
+fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality) -> Element<'a, PomeloMessage> {
     use iced::widget::{column, Row, Button, Text};
 
     let mut row = Row::new().spacing(10);
@@ -130,7 +139,7 @@ fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality
             "Format",
             DownloadFormat::ALL,
             format.clone(),
-            Msg::SetDownloadFormat
+            PomeloMessage::SetDownloadFormat
         )  
     );
 
@@ -139,21 +148,21 @@ fn download_element<'a>(format: &'a DownloadFormat, quality: &'a DownloadQuality
             "Quality",
             DownloadQuality::ALL,
             quality.clone(),
-            Msg::SetDownloadQuality
+            PomeloMessage::SetDownloadQuality
         ).on_condition(!format.is_audio())
     );
 
     column![
         Button::new(Text::new("Download").center())
             .width(100)
-            .on_press(Msg::StartVideoDownload),
+            .on_press(PomeloMessage::StartVideoDownload),
 
         row
 
     ].align_x(iced::Alignment::Center).into()
 }
 
-fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: impl Fn(T) -> Msg + 'a) -> iced::Element<Msg> 
+fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: impl Fn(T) -> PomeloMessage + 'a) -> Element<PomeloMessage> 
     where 
         L: std::borrow::Borrow<[T]> + 'a,
         T: ToString + PartialEq + Clone + 'a,
@@ -169,10 +178,10 @@ fn labeled_picklist<'a, L, T, V>(text: &'a str, list: L, select: V, on_select: i
 }
 
 // Load thumbnails asyncronously
-fn batch_thumbnail_commands(search: &yt_fetch::SearchResults, cache: &PomeloCache) -> Task<Msg> {
+fn batch_thumbnail_commands(search: &yt_fetch::SearchResults, cache: &PomeloCache) -> Task<PomeloMessage> {
     use yt_fetch::{SearchResult, download_thumbnail};
 
-    let mut commands: Vec<Task<Msg>> = Vec::new();
+    let mut commands: Vec<Task<PomeloMessage>> = Vec::new();
     
     for item in search.get_results().into_iter() {
         let id = match &item {
@@ -193,7 +202,7 @@ fn batch_thumbnail_commands(search: &yt_fetch::SearchResults, cache: &PomeloCach
                         Ok(handle) => Ok((id, handle)),
                         Err(e) => Err(PomeloError::new(e))
                     };
-                    Msg::ThumbnailLoaded(out)
+                    PomeloMessage::ThumbnailLoaded(out)
                 }
             ));
         }

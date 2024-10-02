@@ -1,6 +1,7 @@
 use iced::Task;
 
-use super::{PomeloInstance, PomeloPage, Navigation, Msg, yt_fetch::SearchType};
+use crate::app::{PomeloMessage, PomeloCommand};
+use super::{PomeloInstance, PomeloPage, Navigation, yt_fetch::SearchType};
 
 #[derive(Debug, Clone)]
 pub (crate) enum SearchMessage {
@@ -9,7 +10,7 @@ pub (crate) enum SearchMessage {
     SubmitQuery
 }
 
-impl From<SearchMessage> for Msg {
+impl From<SearchMessage> for PomeloMessage {
     fn from(value: SearchMessage) -> Self {
         Self::Search(value)
     }
@@ -31,12 +32,12 @@ impl SearchPage {
 }
 
 impl PomeloPage for SearchPage {
-    fn update(&mut self, _instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
-        if let Msg::Back = message {
-            return (Task::none(), Navigation::Back);
+    fn update(&mut self, _instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
+        if let PomeloMessage::Back = message {
+            return PomeloCommand::back();
         }
 
-        else if let Msg::Search(msg) = message {
+        else if let PomeloMessage::Search(msg) = message {
             match msg {
                 SearchMessage::UpdateInput(s) => self.search_input = s,
                 SearchMessage::SetSearchType(s_type) => self.search_type = s_type,
@@ -44,10 +45,10 @@ impl PomeloPage for SearchPage {
             }
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::widget::{column, row, TextInput, Radio, Button, Text};
         use super::FillElement;
 
@@ -62,19 +63,19 @@ impl PomeloPage for SearchPage {
         column![
             input,
             row![
-                Radio::<Msg>::new(
+                Radio::<PomeloMessage>::new(
                     "Videos",
                     SearchType::Video,
                     Some(self.search_type),
                     set_search_type
                 ),
-                Radio::<Msg>::new(
+                Radio::<PomeloMessage>::new(
                     "Channels",
                     SearchType::Channel,
                     Some(self.search_type),
                     set_search_type
                 ),
-                Radio::<Msg>::new(
+                Radio::<PomeloMessage>::new(
                     "Playlists",
                     SearchType::Playlist,
                     Some(self.search_type),
@@ -88,13 +89,12 @@ impl PomeloPage for SearchPage {
 
             Button::new(Text::new("Back").center())
                 .width(100)
-                .on_press(Msg::Back)
+                .on_press(PomeloMessage::Back)
 
         ].spacing(25).align_x(iced::Alignment::Center).fill()
-
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
@@ -102,24 +102,21 @@ impl PomeloPage for SearchPage {
 impl SearchPage {
     
     // Move to video info page if query is a URL, otherwise move to search results page with query.
-    fn submit_query(&self) -> (Task<Msg>, Navigation) {
+    fn submit_query(&self) -> PomeloCommand {
         use super::video_info_page::{VideoInfoMessage, VideoInfoPage};
         use super::search_results_page::{SearchResultsMessage, SearchResultsPage};
 
         if self.search_input.starts_with("https://") {
             let query = rusty_ytdl::get_video_id(&self.search_input).unwrap();
 
-            (
-                Task::done(VideoInfoMessage::LoadVideo(query).into()),
-                Navigation::GoTo(Box::new(VideoInfoPage::new()))
-            )
+            PomeloCommand::go_to_with_message(VideoInfoMessage::LoadVideo(query), VideoInfoPage::new())
         }
 
         else {
             let query = self.search_input.clone();
             let s_type = self.search_type;
 
-            (
+            PomeloCommand::new(
                 Task::done(SearchResultsMessage::StartSearch.into()),
                 Navigation::GoTo(Box::new(SearchResultsPage::new(query, s_type)))
             )

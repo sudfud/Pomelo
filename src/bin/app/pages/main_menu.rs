@@ -1,8 +1,9 @@
 use iced::Task;
 
-use crate::app::pages::local_video_page::LocalVideoPage;
+use crate::app::{PomeloCommand, PomeloMessage};
 
-use super::{Navigation, PomeloPage, PomeloInstance, Msg};
+use super::local_video_page::LocalVideoPage;
+use super::{PomeloPage, PomeloInstance};
 
 // Main menu, the first page that's loaded when the program starts.
 // Redirects to the Settings, Search, and Video Player pages.
@@ -15,7 +16,7 @@ pub (crate) enum MainMenuMessage {
     Settings
 }
 
-impl From<MainMenuMessage> for Msg {
+impl From<MainMenuMessage> for PomeloMessage {
     fn from(value: MainMenuMessage) -> Self {
         Self::MainMenu(value)
     }
@@ -23,45 +24,35 @@ impl From<MainMenuMessage> for Msg {
 
 impl PomeloPage for MainMenu {
     
-    fn update(&mut self, _instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, _instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
         use super::search_page::SearchPage;
         use super::settings_page::SettingsPage;
 
-        if let Msg::MainMenu(msg) = message {
-            match msg {
-                MainMenuMessage::LocalVideo => return go_to_page(LocalVideoPage::new()),
-                MainMenuMessage::Search => return go_to_page(SearchPage::new()),
-                MainMenuMessage::Settings => return go_to_page(SettingsPage::new())
-            }
+        match message {
+            PomeloMessage::MainMenu(msg) => {
+                match msg {
+                    MainMenuMessage::LocalVideo => PomeloCommand::go_to(LocalVideoPage::new()),
+                    MainMenuMessage::Search => PomeloCommand::go_to(SearchPage::new()),
+                    MainMenuMessage::Settings => PomeloCommand::go_to(SettingsPage::new())
+                }
+            },
+
+            _ => PomeloCommand::none()
         }
-        (Task::none(), Navigation::None)
     }
 
-    fn view(&self, _instance: &PomeloInstance) -> iced::Element<Msg> {
-        use iced::widget::{Button, Text};
-        use super::FillElement;
+    fn view(&self, _instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
+        use super::{FillElement, simple_button};
 
         // Draw buttons
         iced::widget::column![
-            Button::new(Text::new("Play from Computer").center())
-                .width(200)
-                .on_press(MainMenuMessage::LocalVideo.into()),
-
-            Button::new(Text::new("Play from Youtube").center())
-                .width(200)
-                .on_press(MainMenuMessage::Search.into()),
-
-            Button::new(Text::new("Settings").center())
-                .width(200)
-                .on_press(MainMenuMessage::Settings.into())
+            simple_button("Play from Computer", 200, MainMenuMessage::LocalVideo),
+            simple_button("Play from Youtube", 200, MainMenuMessage::Search),
+            simple_button("Settings", 200, MainMenuMessage::Settings)
         ].spacing(25).fill()
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
-}
-
-fn go_to_page(page: impl PomeloPage + 'static) -> (Task<Msg>, Navigation) {
-    (Task::none(), Navigation::GoTo(Box::new(page)))
 }

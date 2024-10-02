@@ -1,6 +1,7 @@
 mod pages;
 mod instance;
 mod yt_fetch;
+mod archive;
 
 use iced::window;
 use iced::{Size, Task};
@@ -9,6 +10,8 @@ use log::warn;
 
 use instance::PomeloInstance;
 use instance::settings::PomeloSettings;
+
+use pages::Navigation;
 
 // Youtube thumbnails, represented as a 2-tuple with the youtube id (String) and the image data (Handle).
 type Thumbnail = (String, iced::widget::image::Handle);
@@ -145,6 +148,42 @@ pub (crate) enum PomeloMessage {
     Close(window::Id)
 }
 
+pub (crate) struct PomeloCommand(Task<PomeloMessage>, Navigation);
+
+impl PomeloCommand {
+    pub (crate) fn none() -> Self {
+        Self(Task::none(), Navigation::None)
+    }
+
+    pub (crate) fn back() -> Self {
+        Self(Task::none(), Navigation::Back)
+    }
+
+    pub (crate) fn home() -> Self {
+        Self(Task::none(), Navigation::Home)
+    }
+
+    pub (crate) fn go_to(page: impl pages::PomeloPage + 'static) -> Self {
+        Self(Task::none(), Navigation::GoTo(Box::new(page)))
+    }
+
+    pub (crate) fn go_to_with_message(message: impl Into<PomeloMessage>, page: impl pages::PomeloPage + 'static) -> Self {
+        Self(Task::done(message.into()), Navigation::GoTo(Box::new(page)))
+    }
+
+    pub (crate) fn new(task: Task<PomeloMessage>, navigation: Navigation) -> Self {
+        Self(task.map(|msg| msg.into()), navigation)
+    }
+
+    pub (crate) fn message(message: impl Into<PomeloMessage>) -> Self {
+        Self(Task::done(message.into()), Navigation::None)
+    }
+
+    pub (crate) fn task_only(task: Task<PomeloMessage>) -> Self {
+        Self(task.map(|msg| msg.into()), Navigation::None)
+    }
+}
+
 // The "heart" of Pomelo.
 pub (crate) struct PomeloApp {
     instance: PomeloInstance,
@@ -217,9 +256,9 @@ impl PomeloApp {
                     .last_mut()
                     .expect("Page stack should not be empty.");
 
-                let (command, navigation) = current_page.update(&mut self.instance, message);
+                let PomeloCommand(task, nav) = current_page.update(&mut self.instance, message);
 
-                match navigation {
+                match nav {
                     Navigation::GoTo(page) => self.page_stack.push(page),
                     Navigation::Back => {self.page_stack.pop();},
                     Navigation::Home => while self.page_stack.len() > 1 {
@@ -228,7 +267,7 @@ impl PomeloApp {
                     Navigation::None => {}
                 }
 
-                command
+                task
             }
         }
     }

@@ -9,9 +9,9 @@ use invidious::universal::Playlist;
 use log::{info, error};
 
 use crate::app::instance::cache::PomeloCache;
-use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
+use crate::app::{DownloadFormat, DownloadQuality, PomeloCommand, PomeloError};
 
-use super::{PomeloInstance, DownloadInfo, Msg, Navigation};
+use super::{PomeloInstance, DownloadInfo, PomeloMessage, Navigation};
 use super::VideoOrder;
 
 #[derive(Debug, Clone)]
@@ -21,9 +21,9 @@ pub (crate) enum PlaylistInfoMessage {
     ToVideo(VideoOrder)
 }
 
-impl From<PlaylistInfoMessage> for Msg {
+impl From<PlaylistInfoMessage> for PomeloMessage {
     fn from(value: PlaylistInfoMessage) -> Self {
-        Msg::PlaylistInfo(value)
+        PomeloMessage::PlaylistInfo(value)
     }
 }
 
@@ -41,19 +41,19 @@ pub (crate) struct PlaylistInfoPage {
 }
 
 impl super::PomeloPage for PlaylistInfoPage {
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
 
         match message {
-            Msg::Back => return (Task::none(), Navigation::Back),
-            Msg::Home => return (Task::none(), Navigation::Home),
-            Msg::SetDownloadFormat(format) => self.selected_format = format,
-            Msg::SetDownloadQuality(quality) => self.selected_quality = quality,
-            Msg::StartVideoDownload => return self.start_download(instance),
-            Msg::NextVideoChunk(line, result) => return self.on_next_chunk(line, result),
-            Msg::VideoDownloadCancelled => return on_download_cancelled(instance),
-            Msg::VideoDownloadComplete(result) => self.on_download_complete(result),
+            PomeloMessage::Back => return PomeloCommand::back(),
+            PomeloMessage::Home => return PomeloCommand::home(),
+            PomeloMessage::SetDownloadFormat(format) => self.selected_format = format,
+            PomeloMessage::SetDownloadQuality(quality) => self.selected_quality = quality,
+            PomeloMessage::StartVideoDownload => return self.start_download(instance),
+            PomeloMessage::NextVideoChunk(line, result) => return self.on_next_chunk(line, result),
+            PomeloMessage::VideoDownloadCancelled => return on_download_cancelled(instance),
+            PomeloMessage::VideoDownloadComplete(result) => self.on_download_complete(result),
 
-            Msg::PlaylistInfo(msg) => match msg {
+            PomeloMessage::PlaylistInfo(msg) => match msg {
                 PlaylistInfoMessage::LoadPlaylist(id) 
                     => return self.load_playlist(id, instance.settings().invidious_url()),
 
@@ -67,12 +67,12 @@ impl super::PomeloPage for PlaylistInfoPage {
             _ => ()
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::widget::{row, ProgressBar, Button, Scrollable};
-        use super::{download_element, ConditionalMessage, FillElement};
+        use super::{download_element, simple_button, ConditionalMessage, FillElement};
         
         let mut column = Column::new().spacing(10).align_x(iced::Alignment::Center);
 
@@ -102,10 +102,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                                 info.progress as f32
                             ).width(instance.settings().window_size().0 / 2.0).into(),
 
-                            Button::new(Text::new("Cancel").center())
-                                .width(100)
-                                .on_press(Msg::VideoDownloadCancelled)
-                                .into()
+                            simple_button("Cancel", 100, PomeloMessage::VideoDownloadCancelled)
                         ]
                     );
                 }
@@ -115,17 +112,8 @@ impl super::PomeloPage for PlaylistInfoPage {
                     column = column.push(
                         column![
                             row![
-                                Button::new(Text::new("Shuffle").center())
-                                    .width(100)
-                                    .on_press(
-                                        PlaylistInfoMessage::ToVideo(VideoOrder::Shuffled).into()
-                                    ),
-
-                                Button::new(Text::new("Reverse").center())
-                                    .width(100)
-                                    .on_press(
-                                        PlaylistInfoMessage::ToVideo(VideoOrder::Reversed).into()
-                                    )
+                                simple_button("Shuffle", 100, PlaylistInfoMessage::ToVideo(VideoOrder::Shuffled)),
+                                simple_button("Reverse", 100, PlaylistInfoMessage::ToVideo(VideoOrder::Reversed))
                             ].spacing(10),
 
                             download_element(&self.selected_format, &self.selected_quality),
@@ -134,7 +122,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                                 Button::new(Text::new("Back").center())
                                     .width(100)
                                     .on_press_maybe(
-                                        Msg::Back.on_condition(
+                                        PomeloMessage::Back.on_condition(
                                             !self.downloading && (self.playlist.is_some() || self.error.is_some())
                                         )
                                     ),
@@ -142,7 +130,7 @@ impl super::PomeloPage for PlaylistInfoPage {
                                 Button::new(Text::new("Home").center())
                                     .width(100)
                                     .on_press_maybe(
-                                        Msg::Home.on_condition(
+                                        PomeloMessage::Home.on_condition(
                                             !self.downloading && (self.playlist.is_some() || self.error.is_some())
                                         )
                                     )
@@ -157,7 +145,7 @@ impl super::PomeloPage for PlaylistInfoPage {
         Scrollable::new(column.width(iced::Length::Fill)).fill()
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
@@ -168,28 +156,28 @@ impl PlaylistInfoPage {
     }
 
     // Get info for the playlist with the given id from Indivious
-    fn load_playlist(&self, id: String, url: &str) -> (Task<Msg>, Navigation) {
+    fn load_playlist(&self, id: String, url: &str) -> PomeloCommand {
         use super::yt_fetch::VideoFetcher;
 
         info!("Loading playlist info from id: {}", id);
         
         let downloader = VideoFetcher::new(url);
-        (
-            Task::perform(
+
+        PomeloCommand::task_only(
+            Task::<PomeloMessage>::perform(
                 async move {
                     downloader.get_playlist_videos(&id).await.map_err(PomeloError::new)
                 },
                 |result| PlaylistInfoMessage::LoadComplete(Box::new(result)).into()
-            ),
-            Navigation::None
+            )
         )
     }
 
     // Handles the result from loading playlist info. Starts loading thumbnails if it was successful.
-    fn on_load_complete(&mut self, result: Result<Playlist, PomeloError>, cache: &PomeloCache) -> (Task<Msg>, Navigation) {
+    fn on_load_complete(&mut self, result: Result<Playlist, PomeloError>, cache: &PomeloCache) -> PomeloCommand {
         use super::yt_fetch::SearchResults;
 
-        let command = match result {
+        let task = match result {
             Ok(playlist) => {
                 self.playlist = Some(playlist.clone());
                 self.videos = playlist.videos.iter()
@@ -204,11 +192,11 @@ impl PlaylistInfoPage {
             }
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Move to the video player, play videos in given order.
-    fn go_to_video(&self, order: VideoOrder) -> (Task<Msg>, Navigation) {
+    fn go_to_video(&self, order: VideoOrder) -> PomeloCommand {
         use super::video_player_page::{VideoPlayerPage, VideoPlayerMessage};
 
         let videos = self.videos.iter().cloned()
@@ -217,14 +205,11 @@ impl PlaylistInfoPage {
 
         let index = if let VideoOrder::Sequential(i) = order {i} else {0};
 
-        (
-            Task::done(VideoPlayerMessage::LoadVideo(index).into()),
-            Navigation::GoTo(Box::new(VideoPlayerPage::new(videos, order)))
-        )
+        PomeloCommand::go_to_with_message(VideoPlayerMessage::LoadVideo(index), VideoPlayerPage::new(videos, order))
     }
 
     // Setup yt-dlp process for downmloading the playlist.
-    fn start_download(&mut self, instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
+    fn start_download(&mut self, instance: &mut PomeloInstance) -> PomeloCommand {
         use filenamify::filenamify;
 
         let playlist = self.playlist.as_ref().unwrap();
@@ -281,7 +266,7 @@ impl PlaylistInfoPage {
             ]);
         }
 
-        let command = match instance.create_download_process(&args) {
+        let task = match instance.create_download_process(&args) {
             Ok((mut stdout, stderr)) => {
                 let mut output = String::new();
                 let result = stdout.read_line(&mut output);
@@ -289,20 +274,20 @@ impl PlaylistInfoPage {
                 self.downloading = true;
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
-                Task::done(Msg::NextVideoChunk(output, result.map_err(PomeloError::new)))
+                Task::done(PomeloMessage::NextVideoChunk(output, result.map_err(PomeloError::new)))
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
+            Err(e) => Task::done(PomeloMessage::VideoDownloadComplete(Err(e)))
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Called when yt-dlp collects a chunk of bytes. Info from yt-dlp is used to update UI during download.
-    fn on_next_chunk(&mut self, output: String, result: Result<usize, PomeloError>) -> (Task<Msg>, Navigation) {
-        let command = match result {
+    fn on_next_chunk(&mut self, output: String, result: Result<usize, PomeloError>) -> PomeloCommand {
+        let task = match result {
             Ok(index) => match index {
-                0 => Task::done(Msg::VideoDownloadComplete(Ok(()))),
+                0 => Task::done(PomeloMessage::VideoDownloadComplete(Ok(()))),
                 _ => {
 
                     let info = self.download_info.as_mut().unwrap();
@@ -331,14 +316,14 @@ impl PlaylistInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(Msg::NextVideoChunk(output, result))
+                    Task::done(PomeloMessage::NextVideoChunk(output, result))
                 }
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
+            Err(e) => Task::done(PomeloMessage::VideoDownloadComplete(Err(e)))
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Download has finished, or the download was stopped by an error or by the user.
@@ -364,12 +349,12 @@ impl PlaylistInfoPage {
     }
 
     // Generates a scrollable list of playlist videos.
-    fn create_playlist_element(&self, playlist: &Playlist, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn create_playlist_element(&self, playlist: &Playlist, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::widget::{Row, Button, Scrollable, Image};
     
-        let mut vids = Column::<Msg>::new().spacing(10);
+        let mut vids = Column::<PomeloMessage>::new().spacing(10);
         for (i, video) in playlist.videos.iter().enumerate() {
-            let mut row: Row<Msg> = Row::new();
+            let mut row: Row<PomeloMessage> = Row::new();
     
             if let Some(handle) = instance.cache().get_thumbnail(&video.id) {
                 row = row.push(Image::new(handle.clone()));
@@ -397,11 +382,9 @@ impl PlaylistInfoPage {
 }
 
 // The download was cancelled by the user.
-fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
+fn on_download_cancelled(instance: &mut PomeloInstance) -> PomeloCommand {
     instance.cancel_download();
 
-    (
-        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")))),
-        Navigation::None
-    )
+    let msg = PomeloMessage::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")));
+    PomeloCommand::message(msg)
 }

@@ -7,9 +7,9 @@ use invidious::CommonVideo;
 
 use log::{info, error};
 
-use crate::app::{DownloadFormat, DownloadQuality, PomeloError};
+use crate::app::{DownloadFormat, DownloadQuality, PomeloError, PomeloMessage, PomeloCommand};
 
-use super::{DownloadInfo, PomeloInstance, Navigation, Msg};
+use super::{DownloadInfo, PomeloInstance, Navigation};
 
 #[derive(Debug, Clone)]
 pub (crate) enum VideoInfoMessage {
@@ -18,7 +18,7 @@ pub (crate) enum VideoInfoMessage {
     PlayVideo
 }
 
-impl From<VideoInfoMessage> for Msg {
+impl From<VideoInfoMessage> for PomeloMessage {
     fn from(value: VideoInfoMessage) -> Self {
         Self::VideoInfo(value)
     }
@@ -51,19 +51,19 @@ impl VideoInfoPage {
 }
 
 impl super::PomeloPage for VideoInfoPage {
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
 
         match message {
-            Msg::Back => return (Task::none(), Navigation::Back),
-            Msg::Home => return (Task::none(), Navigation::Home),
-            Msg::SetDownloadFormat(format) => self.selected_format = format,
-            Msg::SetDownloadQuality(quality) => self.selected_quality = quality,
-            Msg::StartVideoDownload => return self.download_video(instance),
-            Msg::NextVideoChunk(line, result) => return self.on_next_chunk(line, result),
-            Msg::VideoDownloadCancelled => return on_download_cancelled(instance),
-            Msg::VideoDownloadComplete(result) => self.on_download_complete(result),
+            PomeloMessage::Back => return PomeloCommand::back(),
+            PomeloMessage::Home => return PomeloCommand::home(),
+            PomeloMessage::SetDownloadFormat(format) => self.selected_format = format,
+            PomeloMessage::SetDownloadQuality(quality) => self.selected_quality = quality,
+            PomeloMessage::StartVideoDownload => return self.download_video(instance),
+            PomeloMessage::NextVideoChunk(line, result) => return self.on_next_chunk(line, result),
+            PomeloMessage::VideoDownloadCancelled => return on_download_cancelled(instance),
+            PomeloMessage::VideoDownloadComplete(result) => self.on_download_complete(result),
 
-            Msg::VideoInfo(msg) => match msg {
+            PomeloMessage::VideoInfo(msg) => match msg {
                 VideoInfoMessage::LoadVideo(id) 
                     => return load_video(id, instance.settings().invidious_url()),
 
@@ -77,17 +77,17 @@ impl super::PomeloPage for VideoInfoPage {
             _ => ()
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::{Alignment, Length};
         use iced::widget::{column, Column, Image, ProgressBar, Button, Text, Scrollable};
         use super::{download_element, FillElement};
 
         match &self.video {
             Some(video) => {
-                let mut column: Column<Msg> = Column::new()
+                let mut column: Column<PomeloMessage> = Column::new()
                 .spacing(25)
                 .align_x(iced::Alignment::Center);
     
@@ -118,7 +118,7 @@ impl super::PomeloPage for VideoInfoPage {
         
                             Button::new(Text::new("Cancel").center())
                                 .width(100)
-                                .on_press(Msg::VideoDownloadCancelled)
+                                .on_press(PomeloMessage::VideoDownloadCancelled)
                                 .into()
                         ]
                     );
@@ -137,11 +137,11 @@ impl super::PomeloPage for VideoInfoPage {
                             column![
                                 Button::new(Text::new("Back").center())
                                     .width(100)
-                                    .on_press(Msg::Back),
+                                    .on_press(PomeloMessage::Back),
 
                                 Button::new(Text::new("Home").center())
                                     .width(100)
-                                    .on_press(Msg::Home)
+                                    .on_press(PomeloMessage::Home)
                             ].spacing(25)
 
                         ].spacing(50).align_x(Alignment::Center)
@@ -154,17 +154,17 @@ impl super::PomeloPage for VideoInfoPage {
         }
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
 
 impl VideoInfoPage {
     // Video finished loading, or an error occured.
-    fn on_video_loaded(&mut self, result: Result<CommonVideo, PomeloError>) -> (Task<Msg>, Navigation) {
+    fn on_video_loaded(&mut self, result: Result<CommonVideo, PomeloError>) -> PomeloCommand {
         use super::yt_fetch::{SearchResult, download_thumbnail};
 
-        let command = match result {
+        let task = match result {
             Ok(video) => {
                 info!("Info load complete.");
                 self.video = Some(video.clone());
@@ -175,7 +175,7 @@ impl VideoInfoPage {
                             .map(|handle| (id, handle))
                             .map_err(PomeloError::new)
                     },
-                    Msg::ThumbnailLoaded
+                    PomeloMessage::ThumbnailLoaded
                 )
             },
             Err(e) => {
@@ -185,27 +185,24 @@ impl VideoInfoPage {
             }
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Move to video player page.
-    fn play_video(&self) -> (Task<Msg>, Navigation) {
+    fn play_video(&self) -> PomeloCommand {
         use super::VideoOrder;
         use super::video_player_page::{VideoPlayerMessage, VideoPlayerPage};
 
         let id = self.video.as_ref().unwrap().id.clone();
-        (
-            Task::done(VideoPlayerMessage::LoadVideo(0).into()),
-            Navigation::GoTo(
-                Box::new(
-                    VideoPlayerPage::new(VecDeque::from([(id, false)]), VideoOrder::Sequential(0))
-                )
-            )
+
+        PomeloCommand::go_to_with_message(
+            VideoPlayerMessage::LoadVideo(0),
+            VideoPlayerPage::new(VecDeque::from([(id, false)]), VideoOrder::Sequential(0))    
         )
     }
 
     // Setup yt-dlp to download the video.
-    fn download_video(&mut self, instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
+    fn download_video(&mut self, instance: &mut PomeloInstance) -> PomeloCommand {
         use std::path::Path;
 
         let video = self.video.as_ref().unwrap();
@@ -263,7 +260,7 @@ impl VideoInfoPage {
             ]);
         }
 
-        let command = match instance.create_download_process(&args) {
+        let task = match instance.create_download_process(&args) {
             Ok((mut stdout, stderr)) => {
                 let mut output = String::new();
                 let result = stdout.read_line(&mut output);
@@ -272,34 +269,30 @@ impl VideoInfoPage {
                 self.download_info = Some(DownloadInfo::new(out_path, stdout, stderr));
 
                 Task::done(
-                    Msg::NextVideoChunk(output, result.map_err(PomeloError::new))
+                    PomeloMessage::NextVideoChunk(output, result.map_err(PomeloError::new))
                 )
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
+            Err(e) => Task::done(PomeloMessage::VideoDownloadComplete(Err(e)))
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Load the next chunk of bytes and append it to the video file
-    fn on_next_chunk(&mut self, line: String, result: Result<usize, PomeloError>) -> (Task<Msg>, Navigation) {
+    fn on_next_chunk(&mut self, line: String, result: Result<usize, PomeloError>) -> PomeloCommand {
 
         if line.to_lowercase().contains("error") {
-            return (
-                Task::done(
-                    Msg::VideoDownloadComplete(
-                        Err(PomeloError::from(String::from("Failed to retrieve next video chunk.")))
-                    )
-                ),
-
-                Navigation::None
+            return PomeloCommand::message(
+                PomeloMessage::VideoDownloadComplete(
+                    Err(PomeloError::from(String::from("Failed to retrieve next video chunk.")))
+                )
             );
         }
 
-        let command = match result {
+        let task = match result {
             Ok(index) => match index {
-                0 => Task::done(Msg::VideoDownloadComplete(Ok(()))),
+                0 => Task::done(PomeloMessage::VideoDownloadComplete(Ok(()))),
                 _ => {
 
                     let nums: Vec<usize> = line
@@ -325,14 +318,14 @@ impl VideoInfoPage {
                         .read_line(&mut output)
                         .map_err(PomeloError::new);
 
-                    Task::done(Msg::NextVideoChunk(output, result))
+                    Task::done(PomeloMessage::NextVideoChunk(output, result))
                 }
             },
 
-            Err(e) => Task::done(Msg::VideoDownloadComplete(Err(e)))
+            Err(e) => Task::done(PomeloMessage::VideoDownloadComplete(Err(e)))
         };
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Video finished downloading, or an error occured.
@@ -362,14 +355,14 @@ impl VideoInfoPage {
 }
 
 // Use Invidious to load video info from Youtube.
-fn load_video(id: String, invid_url: &str) -> (Task<Msg>, Navigation) {
+fn load_video(id: String, invid_url: &str) -> PomeloCommand {
     use super::yt_fetch::VideoFetcher;
 
     info!("Loading video info with id: {}", id);
 
     let downloader = VideoFetcher::new(invid_url);
     
-    (
+    PomeloCommand::task_only(
         Task::perform(
             async move {
                 downloader.get_video_details(&id)
@@ -378,16 +371,14 @@ fn load_video(id: String, invid_url: &str) -> (Task<Msg>, Navigation) {
                     .map_err(PomeloError::new)
             },
             |result| VideoInfoMessage::VideoLoaded(Box::new(result)).into()
-        ),
-        Navigation::None
+        )
     )
 }
 
 // Download was cancelled by the user.
-fn on_download_cancelled(instance: &mut PomeloInstance) -> (Task<Msg>, Navigation) {
+fn on_download_cancelled(instance: &mut PomeloInstance) -> PomeloCommand {
     instance.cancel_download();
-    (
-        Task::done(Msg::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")))),
-        Navigation::None
+    PomeloCommand::message(
+        PomeloMessage::VideoDownloadComplete(Err(PomeloError::from("Cancelled by user.")))
     )
 }

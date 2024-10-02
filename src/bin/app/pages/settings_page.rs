@@ -3,10 +3,10 @@ use std::fmt::Display;
 use iced::Task;
 use iced::widget::Text;
 
-use crate::app::PomeloInstance;
+use crate::app::{PomeloInstance, PomeloMessage, PomeloCommand};
 use crate::app::instance::settings::INVID_INSTANCES;
 
-use super::{PomeloPage, Navigation, Msg};
+use super::{PomeloPage, Navigation};
 
 // Wrapper for usize, used as an index to the list of Invidious instances.
 #[derive(PartialEq, Eq, Clone)]
@@ -36,9 +36,9 @@ pub (crate) enum SettingsMessage {
     OpenFolderPicker
 }
 
-impl From<SettingsMessage> for Msg {
+impl From<SettingsMessage> for PomeloMessage {
     fn from(value: SettingsMessage) -> Self {
-        Msg::Settings(value)
+        PomeloMessage::Settings(value)
     }
 }
 
@@ -52,19 +52,19 @@ impl SettingsPage {
 }
 
 impl PomeloPage for SettingsPage {
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
 
         let settings = instance.settings_mut();
 
-        if let Msg::Back = message {
-            (Task::none(), Navigation::Back)
+        if let PomeloMessage::Back = message {
+            PomeloCommand::back()
         }
 
-        else if let Msg::Settings(msg) = message {
+        else if let PomeloMessage::Settings(msg) = message {
             match msg {
                 SettingsMessage::InvidiousSetInstance(index) 
                     => settings.set_invidious_index(index),
-        
+
                 SettingsMessage::YtUseNightly(checked) 
                     => settings.set_use_nightly(checked),
 
@@ -74,21 +74,19 @@ impl PomeloPage for SettingsPage {
                 SettingsMessage::VideoSkipOnError(checked) 
                     => settings.set_video_skip_on_error(checked),
 
-                SettingsMessage::OpenFolderPicker => return (
-                    open_folder_picker(instance.settings().download_folder()),
-                    Navigation::None
-                )
-            }
+                SettingsMessage::OpenFolderPicker 
+                    => return open_folder_picker(settings.download_folder())
+                }
 
-            (Task::none(), Navigation::None)
+            PomeloCommand::none()
         }
 
         else {
-            (Task::none(), Navigation::None)
+            PomeloCommand::none()
         }
     }
 
-    fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::widget::{column, row, PickList, Button, Checkbox, TextInput};
         use super::FillElement;
 
@@ -154,17 +152,17 @@ impl PomeloPage for SettingsPage {
 
             Button::new(Text::new("Back").center())
                 .width(100)
-                .on_press(Msg::Back)
+                .on_press(PomeloMessage::Back)
 
         ].spacing(25).align_x(iced::Alignment::Center).fill()
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
 
-fn header(text: &str) -> iced::Element<Msg> {
+fn header(text: &str) -> iced::Element<PomeloMessage> {
     use iced::font::{Font, Weight};
 
     Text::new(text).font(
@@ -175,7 +173,7 @@ fn header(text: &str) -> iced::Element<Msg> {
     ).size(24).into()
 }
 
-fn tooltip_with_background <'a> (text: &'a str, tip: &'a str) -> iced::Element<'a, Msg> {
+fn tooltip_with_background <'a> (text: &'a str, tip: &'a str) -> iced::Element<'a, PomeloMessage> {
     use iced::widget::{Container, Tooltip};
     use iced::widget::container;
     use iced::widget::tooltip::Position;
@@ -197,7 +195,7 @@ fn tooltip_with_background <'a> (text: &'a str, tip: &'a str) -> iced::Element<'
     ).into()
 }
 
-fn open_folder_picker(path: &str) -> Task<Msg> {
+fn open_folder_picker(path: &str) -> PomeloCommand {
     use rfd::FileDialog;
 
     let maybe_folder = FileDialog::new()
@@ -205,11 +203,11 @@ fn open_folder_picker(path: &str) -> Task<Msg> {
         .pick_folder();
 
     if let Some(folder) = maybe_folder {
-        Task::done(
-            SettingsMessage::SetDownloadFolder(folder.to_str().unwrap().replace('\\', "/")).into()
+        PomeloCommand::message(
+            SettingsMessage::SetDownloadFolder(folder.to_str().unwrap().replace('\\', "/"))
         )
     }
     else {
-        Task::none()
+        PomeloCommand::none()
     }
 }

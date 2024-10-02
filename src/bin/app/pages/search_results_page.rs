@@ -6,10 +6,10 @@ use iced::widget::image::Handle;
 use invidious::CommonVideo;
 use log::{info, error};
 
-use crate::app::PomeloError;
+use crate::app::{PomeloError, PomeloMessage, PomeloCommand};
 use crate::app::instance::cache::PomeloCache;
 
-use super::{FillElement, PomeloInstance, Navigation, Msg};
+use super::{FillElement, PomeloInstance, Navigation};
 use super::yt_fetch::{SearchResult, SearchResults, SearchType, VideoFetcher};
 
 // Convenience trait for grabbing info about a search item.
@@ -61,7 +61,7 @@ pub (crate) enum SearchResultsMessage {
     ToPlaylistVideos(String)
 }
 
-impl From<SearchResultsMessage> for Msg {
+impl From<SearchResultsMessage> for PomeloMessage {
     fn from(value: SearchResultsMessage) -> Self {
         Self::SearchResults(value)
     }
@@ -81,41 +81,37 @@ pub (crate) struct SearchResultsPage {
 }
 
 impl super::PomeloPage for SearchResultsPage {
-    fn update(&mut self, instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
-        if let Msg::Back = message {
-            return (Task::none(), Navigation::Back);
-        }
+    fn update(&mut self, instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
+        use super::video_info_page::VideoInfoPage;
+        use super::playlist_info_page::{PlaylistInfoMessage, PlaylistInfoPage};
 
-        else if let Msg::Home = message {
-            return (Task::none(), Navigation::Home);
-        }
-
-        else if let Msg::SearchResults(msg) = message {
-            match msg {
+        match message {
+            PomeloMessage::Back => PomeloCommand::back(),
+            PomeloMessage::Home => PomeloCommand::home(),
+            PomeloMessage::SearchResults(msg) => match msg {
                 SearchResultsMessage::StartSearch 
-                    => return self.start_search(instance.settings().invidious_url()),
+                    => self.start_search(instance.settings().invidious_url()),
 
                 SearchResultsMessage::SearchComplete(result) 
-                    => return self.on_search_complete(result, instance.cache()),
+                    => self.on_search_complete(result, instance.cache()),
 
                 SearchResultsMessage::NewPage(page_number) 
-                    => return self.on_new_page(page_number),
+                    => self.on_new_page(page_number),
 
-                SearchResultsMessage::ToVideo(id) 
-                    => return go_to_video(id),
+                SearchResultsMessage::ToVideo(video) 
+                    => PomeloCommand::go_to(VideoInfoPage::new_with_video(video)),
 
-                SearchResultsMessage::ToChannelVideos(id)
-                    => return go_to_channel_videos(&id),
+                SearchResultsMessage::ToChannelVideos(id) 
+                    => PomeloCommand::go_to_with_message(SearchResultsMessage::StartSearch, SearchResultsPage::new(id, SearchType::ChannelUploads)),
 
                 SearchResultsMessage::ToPlaylistVideos(id)
-                    => return go_to_playlist_videos(id)
-            }
+                    => PomeloCommand::go_to_with_message(PlaylistInfoMessage::LoadPlaylist(id), PlaylistInfoPage::new())
+            },
+            _ => PomeloCommand::none()
         }
-
-        (Task::none(), Navigation::None)
     }
 
-    fn view(&self, instance: &PomeloInstance) -> Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> Element<PomeloMessage> {
         use super::ConditionalMessage;
 
         if let Some(result) = &self.search_results {
@@ -131,7 +127,7 @@ impl super::PomeloPage for SearchResultsPage {
             
                 Button::new(Text::new("Back").center())
                     .width(100)
-                    .on_press(Msg::Back),
+                    .on_press(PomeloMessage::Back),
             
                 Button::new(Text::new("Next").center())
                     .width(100)
@@ -144,7 +140,7 @@ impl super::PomeloPage for SearchResultsPage {
                 buttons,
                 Button::new(Text::new("Home").center())
                     .width(100)
-                    .on_press(Msg::Home)
+                    .on_press(PomeloMessage::Home)
             ].align_x(iced::Alignment::Center).spacing(25).into()
         }
         else {
@@ -152,7 +148,7 @@ impl super::PomeloPage for SearchResultsPage {
         }
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
@@ -170,7 +166,7 @@ impl SearchResultsPage {
     }
 
     // Use Invidious to search for items from Youtube.
-    fn start_search(&self, invid_url: &str) -> (Task<Msg>, Navigation) {
+    fn start_search(&self, invid_url: &str) -> PomeloCommand {
         let query = self.query.clone();
         let search_type = self.search_type;
         let page_number = self.page_number;
@@ -178,7 +174,8 @@ impl SearchResultsPage {
 
         info!("Starting Youtube search. Type: {}, Page: {}, Query: {}", search_type, page_number, query);
         let downloader = VideoFetcher::new(invid_url);
-        (
+
+        PomeloCommand::new(
             Task::perform(
                 async move {
 
@@ -209,8 +206,8 @@ impl SearchResultsPage {
     }
 
     // Handle result of search query. Start downloading thumbnails if search was successful.
-    fn on_search_complete(&mut self, result: Result<SearchResults, PomeloError>, cache: &PomeloCache) -> (Task<Msg>, Navigation) {
-        let command = match &result {
+    fn on_search_complete(&mut self, result: Result<SearchResults, PomeloError>, cache: &PomeloCache) -> PomeloCommand {
+        let task = match &result {
             Ok(search) => {
 
                 info!("Search complete.");
@@ -231,30 +228,28 @@ impl SearchResultsPage {
 
         self.search_results = Some(result);
 
-        (command, Navigation::None)
+        PomeloCommand::task_only(task)
     }
 
     // Navigate to another search results page.
-    fn on_new_page(&mut self, page_number: usize) -> (Task<Msg>, Navigation) {
+    fn on_new_page(&mut self, page_number: usize) -> PomeloCommand {
 
         self.page_number = page_number;
         self.search_results = None;
 
-        (
-            Task::done(SearchResultsMessage::StartSearch.into()),
-            Navigation::None
-        )
+        
+        PomeloCommand::message(SearchResultsMessage::StartSearch)
     }
 
     // Generate a scrollable list of search items.
-    fn get_search_results_element(&self, search_results: &Result<SearchResults, PomeloError>, instance: &PomeloInstance) -> Element<Msg> {
+    fn get_search_results_element(&self, search_results: &Result<SearchResults, PomeloError>, instance: &PomeloInstance) -> Element<PomeloMessage> {
         use iced::widget::Scrollable;
 
         let mut column = Column::new().spacing(10);
 
         match search_results {
             Ok(search) => {
-                let mut results = Column::<Msg>::new().spacing(10);
+                let mut results = Column::<PomeloMessage>::new().spacing(10);
                 for item in search.get_results().iter() {
                     let thumbnails = instance.cache().thumbnails();
                     results = results.push(self.get_search_item_element(item, thumbnails));
@@ -272,8 +267,8 @@ impl SearchResultsPage {
     }
 
     // Generate a button that contains the item's thumbnail and info.
-    fn get_search_item_element(&self, item: &SearchResult, thumbnails: &HashMap<String, Handle>) -> Element<Msg> {
-        let mut row: Row<Msg> = Row::new();
+    fn get_search_item_element(&self, item: &SearchResult, thumbnails: &HashMap<String, Handle>) -> Element<PomeloMessage> {
+        let mut row: Row<PomeloMessage> = Row::new();
 
         if let Some(handle) = thumbnails.get(&item.id()) {
             row = row.push(Image::new(handle.clone()));
@@ -299,36 +294,4 @@ impl SearchResultsPage {
             .on_press(msg.into())
             .into()
     }
-}
-
-// Move to video info page with the given video.
-fn go_to_video(video: CommonVideo) -> (Task<Msg>, Navigation) {
-    use super::video_info_page::VideoInfoPage;
-
-    (
-        Task::none(),
-        Navigation::GoTo(Box::new(VideoInfoPage::new_with_video(video)))
-    )
-}
-
-// Move to another search results page that contains this channel's uploaded videos.
-fn go_to_channel_videos(id: &str) -> (Task<Msg>, Navigation) {
-    (
-        Task::done(SearchResultsMessage::StartSearch.into()),
-        Navigation::GoTo(
-            Box::new(SearchResultsPage::new(String::from(id), SearchType::ChannelUploads))
-        )
-    )
-}
-
-// Move to playlist info page with the given playlist id.
-fn go_to_playlist_videos(id: String) -> (Task<Msg>, Navigation) {
-    use super::playlist_info_page::{PlaylistInfoMessage, PlaylistInfoPage};
-
-    (
-        Task::done(PlaylistInfoMessage::LoadPlaylist(id).into()),
-        Navigation::GoTo(
-            Box::new(PlaylistInfoPage::new())
-        )
-    )
 }

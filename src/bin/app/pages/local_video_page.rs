@@ -1,8 +1,8 @@
 use iced::Task;
 
-use crate::app::PomeloInstance;
+use crate::app::{PomeloInstance, PomeloMessage, PomeloCommand};
 
-use super::{VideoOrder, Navigation, Msg};
+use super::{VideoOrder, Navigation};
 
 #[derive(Debug, Clone)]
 pub (crate) enum LocalVideoMessage {
@@ -11,7 +11,7 @@ pub (crate) enum LocalVideoMessage {
     ClearVideos
 }
 
-impl From<LocalVideoMessage> for Msg {
+impl From<LocalVideoMessage> for PomeloMessage {
     fn from(value: LocalVideoMessage) -> Self {
         Self::LocalVideo(value)
     }
@@ -23,12 +23,12 @@ pub (crate) struct LocalVideoPage {
 }
 
 impl super::PomeloPage for LocalVideoPage {
-    fn update(&mut self, _instance: &mut PomeloInstance, message: Msg) -> (Task<Msg>, Navigation) {
-        if let Msg::Back = message {
-            return (Task::none(), Navigation::Back);
+    fn update(&mut self, _instance: &mut PomeloInstance, message: PomeloMessage) -> PomeloCommand {
+        if let PomeloMessage::Back = message {
+            return PomeloCommand::back();
         }
 
-        if let Msg::LocalVideo(msg) = message {
+        if let PomeloMessage::LocalVideo(msg) = message {
             match msg {
                 LocalVideoMessage::OpenFilePicker => return self.open_file_picker(),
                 LocalVideoMessage::PlayVideos(order) => return self.play_videos(order),
@@ -36,67 +36,45 @@ impl super::PomeloPage for LocalVideoPage {
             }
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn view(&self, instance: &PomeloInstance) -> iced::Element<Msg> {
+    fn view(&self, instance: &PomeloInstance) -> iced::Element<PomeloMessage> {
         use iced::Element;
-        use iced::widget::{column, row, Column, Scrollable, Text, Button};
-        use super::FillElement;
+        use iced::widget::{column, row, Column, Scrollable, Text};
+        use super::{FillElement, simple_button};
 
-        let video_list: Vec<Element<Msg>> = self.videos.iter()
+        let video_list: Vec<Element<PomeloMessage>> = self.videos.iter()
             .map(|s| Text::new(s.split('/').last().unwrap()).into())
             .collect();
 
         column![
             if self.videos.is_empty() {
-                Element::<Msg>::from(
-                    Button::new(Text::new("Load Videos").center())
-                        .width(200)
-                        .on_press(LocalVideoMessage::OpenFilePicker.into())
-                )
+                simple_button("Load Videos", 200, LocalVideoMessage::OpenFilePicker)
             } 
             else {
-                Element::<Msg>::from(
+                Element::<PomeloMessage>::from(
                     column![
                         Scrollable::new(Column::from_vec(video_list))
                             .height(instance.settings().window_size().1 / 2.0),
 
                         row![
-                            Button::new(Text::new("Play").center())
-                                .width(100)
-                                .on_press(
-                                    LocalVideoMessage::PlayVideos(VideoOrder::Sequential(0)).into()
-                                ),
-
-                            Button::new(Text::new("Shuffle").center())
-                                .width(100)
-                                .on_press(
-                                    LocalVideoMessage::PlayVideos(VideoOrder::Shuffled).into()
-                                ),
-
-                            Button::new(Text::new("Reverse").center())
-                                .width(100)
-                                .on_press(
-                                    LocalVideoMessage::PlayVideos(VideoOrder::Reversed).into()
-                                )
+                            simple_button("Play", 100, LocalVideoMessage::PlayVideos(VideoOrder::Sequential(0))),
+                            simple_button("Shuffle", 100, LocalVideoMessage::PlayVideos(VideoOrder::Shuffled)),
+                            simple_button("Reverse", 100, LocalVideoMessage::PlayVideos(VideoOrder::Reversed))
                         ].spacing(10),
 
-                        Button::new(Text::new("Clear").center())
-                            .width(100)
-                            .on_press(LocalVideoMessage::ClearVideos.into())
+                        simple_button("Clear", 100, LocalVideoMessage::ClearVideos)
 
                     ].spacing(25).align_x(iced::Alignment::Center)
                 )
             },
 
-            Button::new(Text::new("Back").center())
-                .width(100)
-                .on_press(Msg::Back)
+            simple_button("Back", 100, PomeloMessage::Back)
         ].spacing(25).align_x(iced::Alignment::Center).fill()
     }
 
-    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<Msg> {
+    fn subscription(&self, _instance: &PomeloInstance) -> iced::Subscription<PomeloMessage> {
         iced::Subscription::none()
     }
 }
@@ -109,7 +87,7 @@ impl LocalVideoPage {
     }
 
     // Select videos from the computer, then move them to the Video Player page.
-    fn open_file_picker(&mut self) -> (Task<Msg>, Navigation) {
+    fn open_file_picker(&mut self) -> PomeloCommand {
         use rfd::FileDialog;
 
         let maybe_files = FileDialog::new()
@@ -125,10 +103,10 @@ impl LocalVideoPage {
             }
         }
 
-        (Task::none(), Navigation::None)
+        PomeloCommand::none()
     }
 
-    fn play_videos(&self, order: VideoOrder) -> (Task<Msg>, Navigation) {
+    fn play_videos(&self, order: VideoOrder) -> PomeloCommand {
         use std::collections::VecDeque;
         use super::video_player_page::{VideoPlayerMessage, VideoPlayerPage};
 
@@ -138,9 +116,6 @@ impl LocalVideoPage {
 
         let index = if let VideoOrder::Sequential(i) = order {i} else {0};
 
-        (
-            Task::done(VideoPlayerMessage::LoadVideo(index).into()),
-            Navigation::GoTo(Box::new(VideoPlayerPage::new(vids, order)))
-        )
+        PomeloCommand::go_to_with_message(VideoPlayerMessage::LoadVideo(index), VideoPlayerPage::new(vids, order))
     }
 }
